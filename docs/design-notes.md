@@ -1,0 +1,293 @@
+# 設計筆記
+
+這份文件記錄 `gwt.zsh` 裡每個「看起來有點囉唆」的決定的理由，以及判斷的依據。
+多數結論都是實際跑過才確認的，指令都附在下面，可以自己重現。
+
+## 1. 為什麼一定得是 shell 函式
+
+這不是風格問題，而是 shell 的執行模型決定的：
+
+| 形式              | 執行位置   | 能改變目前終端機的工作目錄 | 適合用途                     |
+| ----------------- | ---------- | -------------------------- | ---------------------------- |
+| 獨立腳本 `gwt.sh` | 子處理序   | 不行，`cd` 只影響子處理序  | 不需要改變 shell 狀態的工具  |
+| `source gwt.sh`   | 目前 shell | 可以，但每次都要 `source`  | 臨時載入設定                 |
+| shell 函式        | 目前 shell | 可以                       | 需要 `cd`、改環境變數的工具  |
+| alias             | 目前 shell | 可以，但寫不了流程判斷     | 縮短固定指令                 |
+
+子處理序結束後，父 shell 的工作目錄不會跟著變。所以「切換 worktree」這個需求從一開始就只能寫成函式，代價是它必須被 `source` 進目前的 shell（`install.sh` 就是在處理這件事）。
+
+`gwt.plugin.zsh` 只是給 plugin manager 的進入點，內容是 `source "${0:A:h}/gwt.zsh"`；用 `${0:A:h}` 是為了讓 symlink 與任意安裝路徑都能正確解析。
+
+## 2. 解析 `git worktree list --porcelain`，不是給人看的格式
+
+預設輸出是對齊過的人類格式，欄位用空白分隔，路徑只要含空白就切不準。`--porcelain` 改成每行一個 `key value`，worktree 之間用空行分隔：
+
+```
+worktree /path/to/shop
+HEAD 89ae97a1b2c3d4e5f6a7b8
+branch refs/heads/main
+
+worktree /path/to/shop-hotfix
+HEAD fedcba9876543210fedc
+detached
+```
+
+實作上用 `case` 逐行比對前綴，遇到空行才把累積到的那一組收進陣列：
+
+```zsh
+while IFS= read -r line || [[ -n $line ]]; do
+  case $line in
+    'worktree '*) wt_path=${line#worktree } ;;
+    'HEAD '*)     head=${line#HEAD } ;;
+    'branch '*)   branch=${line#branch refs/heads/} ;;
+    'detached')   branch=${_GWT_M[detached]} ;;
+    '')
+      [[ -n $wt_path ]] && _gwt_collect_one "$keyword" "$wt_path" "$branch" "$head"
+      wt_path=''; head=''; branch=''
+      ;;
+  esac
+done
+```
+
+`IFS= read -r` 的 `-r` 不能省，否則路徑裡的反斜線會被吃掉。`|| [[ -n $line ]]` 是處理最後一行沒有換行的情況。
+
+呼叫端會補一個換行，確保最後一組一定會以空行結尾：
+
+```zsh
+_gwt_collect "$keyword" < <(git worktree list --porcelain 2>/dev/null; printf '\n')
+```
+
+用 process substitution 而不用 `git ... | _gwt_collect`，是因為管線的每一段都跑在子 shell，`_GWT_PATHS` 的賦值會消失在子 shell 裡。這是 shell 腳本常見的陷阱，改寫時很容易漏掉。
+
+## 3. 變數千萬不要叫 `path`
+
+在 zsh 裡，小寫的 `path` 陣列與大寫的 `PATH` 環境變數是**同一個東西的兩種表示**。在函式裡宣告 `local path=""`，等於把函式內的 `PATH` 清空：
+
+```sh
+zsh -f -c 'f(){ local path=""; ls /tmp >/dev/null; }; f'
+# f: command not found: ls
+```
+
+這個坑在 bash 不存在（bash 的 `path` 只是普通變數），所以從 bash 改寫過來特別容易中。本專案一律使用 `wt_path`，並有測試 `tests/cases/07-path-safety.zsh` 把關：
+
+- 執行後 `PATH` 與執行前完全相同
+- `command -v ls` 仍能解析
+- 原始碼（略過註解）不含 `local path=`
+
+## 4. 用跳脫序列原地重繪
+
+選單不是每按一次鍵就重印一份，而是把游標移回選單第一列，原地重畫：
+
+| 序列               | 作用               | 用途                               |
+| ------------------ | ------------------ | ---------------------------------- |
+| `\e[?25l` / `\e[?25h` | 隱藏／顯示游標  | 選單期間隱藏游標，避免閃爍         |
+| `\e[%dA`           | 游標往上移 N 行    | 按鍵後回到第一列重畫               |
+| `\r\e[2K`          | 回到行首並清除整行 | 每列重畫前先清乾淨，避免殘留舊文字 |
+| `\e[J`             | 清除游標以下       | 離開時把整個選單擦掉               |
+| `\e[1;30;46m`      | 粗體、黑字、青底   | 選取光棒                           |
+
+重繪的關鍵是「每列只佔一行」。長路徑折行會讓「往上移 N 行」算錯，畫面就會錯位——這也是本專案加上欄寬截斷的原因（見第 8 節）。
+
+## 5. 分開「單獨的 Esc」與「方向鍵」
+
+方向鍵送進終端機的其實是一串字元：`↑` 是 `Esc [ A`，`↓` 是 `Esc [ B`；某些終端機在 application cursor mode 下送 `Esc O A` / `Esc O B`。
+
+所以讀到 `Esc` 之後，要再等一小段時間看後面有沒有跟著字元：
+
+```zsh
+rest=''
+read -r -k 2 -s -t "${GWT_ESC_TIMEOUT:-0.05}" rest
+case $rest in
+  '[A'|'OA') _gwt_shift -1 ;;
+  '[B'|'OB') _gwt_shift 1 ;;
+  '')        _gwt_finish; return 1 ;;   # 只按了 Esc
+  *)         ;;                         # 其他序列：忽略
+esac
+```
+
+`-t 0.05` 是等 50 毫秒。等不到就是單獨的 Esc，視為取消；等到兩個字元就是方向鍵。這個值做成 `GWT_ESC_TIMEOUT`，因為某些遠端連線或慢速終端機可能讓後續字元晚到。
+
+## 6. 隱藏游標，就要配 `trap`
+
+選單期間游標是隱藏的。如果使用者按 `Ctrl+C` 而沒有清理，游標會一直消失，整個終端機看起來像壞掉。所以進入選單前先設 trap：
+
+```zsh
+printf '\e[?25l'
+trap '_GWT_INTERRUPTED=1; _gwt_finish; return 130' INT TERM
+```
+
+而 `_gwt_finish` 是所有離開路徑唯一的出口：
+
+```zsh
+_gwt_finish() {
+  trap - INT TERM
+  if (( ${GWT_CLEAR_ON_EXIT:-1} )); then
+    printf '\e[%dA\e[J' "$_GWT_DRAWN"
+  fi
+  printf '\e[?25h'
+}
+```
+
+Enter、數字鍵、`q`、`Esc`、`Ctrl+C`、讀不到輸入（EOF）這六條路都會呼叫它，順序是「先移除 trap、再擦畫面、最後還原游標」。`tests/cases-pty/08-ctrl-c.zsh` 會檢查原始輸出裡真的出現過 `\e[?25h`。
+
+## 7. `trap` 裡的 `return` 回傳值不可信
+
+原始版本用 `trap '...; return 130' INT TERM` 期望 `gwt` 最後回傳 130。實測 zsh 5.9 在 PTY 下按 `Ctrl+C`，`gwt` 的結束碼會變成 `0`（有時是 `1`），不是 `130`。
+
+用 `zsh -fx` 追蹤看得很清楚：trap 內的 `_gwt_finish` 有跑、`return 130` 也有執行，但回到呼叫端時 `$?` 不是 130。
+
+因此本專案改成「trap 只負責標記，結束碼由 `gwt` 自己決定」：
+
+```zsh
+# trap 內
+_GWT_INTERRUPTED=1; _gwt_finish; return 130
+
+# gwt 內
+_gwt_pick
+local rc=$?
+(( _GWT_INTERRUPTED )) && return 130
+(( rc != 0 )) && return $rc
+```
+
+另外也處理了「Ctrl+C 被當成位元組送進來」的情況（有些終端機設定會關掉 `ISIG`，訊號就不會產生，`\x03` 會直接變成輸入）：
+
+```zsh
+$'\x03')
+  _GWT_INTERRUPTED=1
+  _gwt_finish
+  return 130
+  ;;
+```
+
+## 8. 欄寬計算：跳脫序列不算、全形字算兩欄
+
+路徑長度用「字元數」算是不準的：`\e[36m` 這種跳脫序列不佔畫面，而 CJK 全形字佔兩欄。`(目前位置)` 是 6 個字元，但實際佔 10 欄。
+
+`_gwt_swidth` 逐字元累加，遇到全形範圍就加兩欄：
+
+```zsh
+if [[ $c == [$'\u1100'-$'\u115f'] || $c == [$'\u2e80'-$'\ua4cf'] ||
+      $c == [$'\uac00'-$'\ud7a3'] || $c == [$'\uf900'-$'\ufaff'] ||
+      $c == [$'\uFE30'-$'\uFE4F'] || $c == [$'\uff00'-$'\uff60'] ||
+      $c == [$'\uffe0'-$'\uffe6'] ]]; then
+  (( w += 2 ))
+else
+  (( w += 1 ))
+fi
+```
+
+`_gwt_strip_ansi` 先把 `\e[...m` 拿掉，再量剩下的文字。組字串時刻意用固定格式：
+
+```
+[編號] 路徑  [分支] (commit) (目前位置)
+```
+
+可用給路徑的欄寬 = 終端機寬 − 前綴 − 後方資訊，算出來才決定要不要截斷：
+
+```zsh
+_gwt_clip_middle "$wt_path" "$avail"   # 保留頭 1/3、尾 2/3，中間放省略號
+```
+
+保留比較多的尾段，是因為工作目錄的結尾（`shop-feature-login`）比前面的共同路徑有用。
+
+小細節：`_GWT_WIDTH` 會再減 1，避免內容剛好佔滿最後一欄時觸發終端機自動換行，那樣也會讓重繪行數算錯。
+
+## 9. 不用 `%b` 印分支名稱
+
+原始版本把顏色碼存在陣列裡，再用 `printf '... %b\n'` 印出。`%b` 會解讀反斜線跳脫序列，所以分支名稱只要包含 `\n`、`\t` 之類的內容，就會被轉成控制字元（分支名稱是可以包含反斜線的）。
+
+本專案改成「事先組好真正的跳脫字串，再用 `%s` 印」：
+
+```zsh
+_GWT_S_BRANCH=$'\e[36m'
+suffix=" ${_GWT_S_BRANCH}[${branch}]${_GWT_S_RESET} (${head})"
+printf '%s\n' "$REPLY"
+```
+
+`tests/cases/10-escape-safety.zsh` 用 `a\nb\tc` 這種分支名稱與含 `%s` 的路徑驗證輸出維持字面。
+
+## 10. 超過 9 筆時的多位數編號
+
+原文的限制是「數字鍵只支援 1 到 9」，但提示文字卻印出「按 1-12 直接跳轉」，按 `1` 會立刻跳到第 1 筆，永遠選不到 10 以後。
+
+這裡的作法是：只有在 `_GWT_COUNT > 9` 時才多等一個數字：
+
+```zsh
+while (( ${#digits} < maxlen )); do
+  if ! read -r -k 1 -s -t "${GWT_DIGIT_TIMEOUT:-0.4}" more; then
+    break
+  fi
+  if [[ $more == [0-9] ]]; then
+    digits="${digits}${more}"
+    (( 10#$digits * 10 > _GWT_COUNT )) && break   # 再加一位就爆了，不用等
+  else
+    [[ -n $more ]] && _GWT_PENDING_KEY=$more       # 交回主迴圈處理
+    break
+  fi
+done
+```
+
+三個細節：
+
+1. 9 筆以內完全沒有等待，跟原本一樣即時。
+2. 若已輸入的數字再加一位就會超過總數（例如 12 筆時輸入 `9`），立刻結束等待，不必白等 0.4 秒。
+3. 等待期間如果按下的是 `j`、`k`、`q`、Enter 之類的按鍵，會放進 `_GWT_PENDING_KEY` 交回主迴圈，不會被吃掉。
+
+## 11. 狀態集中在 `_GWT_*`，邏輯拆成小函式
+
+原文是一支大函式，`_gwt_draw` 直接定義在裡面並依賴外層的區域變數。這樣寫能動，但沒辦法單獨測試「porcelain 解析對不對」或「某一列長什麼樣」。
+
+拆開之後，每個函式只做一件事，狀態放在 `_GWT_` 開頭的變數：
+
+| 函式                             | 職責                                   |
+| -------------------------------- | -------------------------------------- |
+| `_gwt_collect` / `_gwt_collect_one` | 解析 porcelain、套用關鍵字篩選      |
+| `_gwt_format_row` / `_gwt_draw`  | 組出單列文字、重繪整個選單             |
+| `_gwt_pick` / `_gwt_pick_number` / `_gwt_shift` | 讀鍵、移動、數字跳轉  |
+| `_gwt_clip_middle` / `_gwt_swidth` / `_gwt_strip_ansi` | 欄寬計算與截斷 |
+| `_gwt_finish`                    | 收尾（移除 trap、擦畫面、還原游標）    |
+| `gwt`                            | 參數解析、檢查環境、最後 `cd`          |
+
+唯一進入使用者命名空間的只有 `gwt` 這一個名字。`_gwt_collect` 直接從 stdin 讀 porcelain，測試因此可以餵一段固定的文字進去，不需要真的建立儲存庫。
+
+## 12. 取消回傳 1，不是 0
+
+原文的 `q`／`Esc` 分支回傳 `0`。本專案改成 `1`：
+
+- 「取消」不是成功，`gwt && deploy` 這種寫法不該在使用者按 `q` 之後繼續跑
+- 與 `Ctrl+C`（130）、找不到（1）、未知選項（2）一起看，語意一致
+
+這是刻意的行為變更，`tests/cases-pty/06-cancel-q.zsh` 與 `07-cancel-esc.zsh` 都把它固定下來。
+
+## 13. 用 `emulate -L zsh` 開場
+
+使用者的 `~/.zshrc` 可能開了 `ksh_arrays`（陣列從 0 起算）、`nounset`、`shwordsplit` 之類的選項，這些都會讓原本的程式碼行為改變或直接報錯。
+
+`emulate -L zsh` 在函式內把選項重設成 zsh 預設值，離開函式後自動還原使用者的設定，是寫 zsh 函式時最省事的自我保護。另外 `setopt local_options no_nomatch` 避免沒對到東西的 glob 直接讓函式報錯中斷。
+
+## 14. 測試為什麼一定要 PTY
+
+`gwt` 會檢查 stdin/stdout 是否為終端機，因為選單需要游標控制；而 zsh 的 `read -k` 在管線上會直接失敗：
+
+```sh
+printf '12' | zsh -f -c 'read -r -k1 a; print $a'
+# read: not interactive and can't open terminal
+```
+
+所以互動測試用 `tests/lib/ptydrive.py` 開一個真正的 pseudo-terminal。這支小工具做兩件關鍵的事：
+
+1. 用 `pty.fork()` 讓子行程的 stdin/stdout/stderr 都接上 PTY
+2. **等輸出靜止 0.3 秒才送按鍵**。如果只是「啟動後等 0.3 秒」，在慢一點的機器上按鍵可能比選單更早抵達，就會被終端機的行緩衝吃掉，測試變成隨機失敗。
+
+它同時把子行程的結束碼原樣傳回來，所以測試檔只要照平常寫 `zsh -f 測試檔`，用結束碼表示結果即可。
+
+## 附錄：文章中刻意保留的行為
+
+以下行為與原文完全一致，不是忘記改：
+
+- 光棒只反白到路徑，後面的分支與 commit 維持原色
+- 目前位置用黃色標註
+- 迴圈式的上下移動（到頭尾會繞回另一端）
+- 關鍵字比對範圍是「路徑 + 分支」整串，短關鍵字可能命中多筆
+- 單筆符合時不顯示選單，直接切換
+- 選單提示會依實際數量印出「按 1-N 直接跳轉」
