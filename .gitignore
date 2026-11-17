@@ -1,0 +1,13 @@
+# macOS
+.DS_Store
+
+# 編輯器 / IDE
+.idea/
+.vscode/
+*.swp
+*~
+
+# 測試與暫存產物
+/tmp/
+.gwt-test-out/
+*.log
