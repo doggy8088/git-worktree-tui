@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gwt — git worktree 的互動式切換指令</title>
+<meta name="description" content="在終端機列出所有 Git worktree，用方向鍵或 j、k 選好，Enter 直接切換目錄。zsh 函式，只依賴 zsh 與 git。">
+<meta property="og:title" content="gwt — git worktree 的互動式切換指令">
+<meta property="og:description" content="在終端機列出所有 Git worktree，用方向鍵或 j、k 選好，Enter 直接切換目錄。">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://gwt.gh.miniasp.com/">
+<meta name="theme-color" content="#0a0a0b">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<a class="skip" href="#main">跳到主要內容</a>
+
+<header class="bar">
+  <a class="mark" href="/" aria-label="gwt 首頁"><span aria-hidden="true">&gt;</span>gwt</a>
+  <nav class="bar-links" aria-label="主要">
+    <a href="#how">操作</a>
+    <a href="#keys">按鍵</a>
+    <a href="#faq">常見問題</a>
+    <a class="bar-cta" href="https://github.com/doggy8088/git-worktree-tui">GitHub</a>
+  </nav>
+</header>
+
+<main id="main">
+
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="hero-card">
+      <div class="hero-say">
+        <div class="band" aria-hidden="true"></div>
+        <h1 id="hero-title">git worktree 的<br>互動式切換指令</h1>
+        <p class="lead">在終端機列出所有 worktree，用方向鍵選好，按 Enter 就切過去。</p>
+        <div class="install-block">
+          <p class="install-name">安裝</p>
+          <pre class="install-code"><code>git clone https://github.com/doggy8088/git-worktree-tui.git
+cd git-worktree-tui &amp;&amp; bash install.sh</code></pre>
+        </div>
+      </div>
+      <div class="hero-foot">
+        <div class="actions">
+          <button class="btn" type="button" data-copy="git clone https://github.com/doggy8088/git-worktree-tui.git &amp;&amp; cd git-worktree-tui &amp;&amp; bash install.sh">複製安裝指令</button>
+          <a class="btn btn-quiet" href="#how">看它怎麼動</a>
+        </div>
+        <p class="copy-state" role="status" data-copy-state></p>
+        <ul class="hero-links">
+          <li><a href="https://github.com/doggy8088/git-worktree-tui#readme">說明文件</a></li>
+          <li><a href="https://github.com/doggy8088/git-worktree-tui/blob/main/docs/design-notes.md">設計筆記</a></li>
+          <li><a href="https://github.com/doggy8088/git-worktree-tui/blob/main/docs/roadmap.md">下一步</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="hero-stage">
+      <div class="chevron-field" aria-hidden="true"></div>
+      <div class="term" data-ui>
+        <div class="term-head">
+          <span class="term-title">~/projects/shop</span>
+          <span class="term-shell">zsh</span>
+        </div>
+        <pre class="term-body"><code><span class="line"><span class="prompt">&gt;</span> git worktree add ../shop-feature-tests -b feature/tests</span>
+<span class="line hint">Preparing worktree (new branch 'feature/tests')</span>
+<span class="line gap">&nbsp;</span>
+<span class="line"><span class="prompt">&gt;</span> gwt</span>
+<span class="line hint">請選擇 Worktree (↑/↓ 移動, Enter 確認, 按 1-5 直接跳轉, q/Esc 取消)：</span>
+<span class="menu">
+<span class="row"><span class="sel"><span class="num">[1]</span> <span class="path">…/shop</span></span><span class="branch">[main]</span><span class="sha">(89ae97a)</span><span class="mark">(目前位置)</span></span>
+<span class="row"><span class="sel"><span class="num">[2]</span> <span class="path">…/shop-feature-login</span></span><span class="branch">[feature/login]</span><span class="sha">(89ae97a)</span></span>
+<span class="row is-active"><span class="sel"><span class="num">[3]</span> <span class="path">…/shop-feature-search-api</span></span><span class="branch">[feature/search-api]</span><span class="sha">(89ae97a)</span></span>
+<span class="row"><span class="sel"><span class="num">[4]</span> <span class="path">…/shop-fix-cart-bug</span></span><span class="branch">[fix/cart-bug]</span><span class="sha">(89ae97a)</span></span>
+<span class="row"><span class="sel"><span class="num">[5]</span> <span class="path">…/shop-hotfix</span></span><span class="branch">[detached]</span><span class="sha">(89ae97a)</span></span>
+</span>
+<span class="line gap">&nbsp;</span>
+<span class="line"><span class="prompt">&gt;</span> <span class="dim">cd ~/projects/shop-feature-search-api</span></span>
+<span class="line"><span class="dir">~/projects/shop-feature-search-api</span></span>
+<span class="line"><span class="prompt">&gt;</span> <span class="caret" aria-hidden="true"></span></span></code></pre>
+      </div>
+      <p class="stage-note">這是執行時的畫面：欄寬、光棒、分支顏色都和終端機裡一樣。</p>
+    </div>
+  </section>
+
+  <section class="statement" aria-label="gwt 在做什麼">
+    <p class="statement-text">
+      以前要在一堆路徑裡找一個目錄
+      <span class="frame" aria-hidden="true"><i></i><i></i><i class="hot"></i></span>
+      先列出、再複製、貼到 cd 後面
+      <span class="frame" aria-hidden="true"><i></i><i class="hot"></i><i></i></span>
+      gwt 把這四步收成一個 <span class="chev">&gt;</span> 和一次 Enter。
+    </p>
+  </section>
+
+  <section class="how" id="how" aria-labelledby="how-title">
+    <div class="how-clause">
+      <h2 id="how-title" class="how-line" data-clause>先執行 gwt，看清單</h2>
+      <p class="how-say" data-say>在儲存庫或任何一個 worktree 裡執行，它會列出這個儲存庫的所有工作目錄。</p>
+    </div>
+
+    <div class="how-stage">
+      <div class="chevron-field chevron-field-sm" aria-hidden="true"></div>
+      <div class="term term-live" data-ui>
+        <div class="term-head">
+          <span class="term-title">~/projects/shop</span>
+          <span class="term-shell">zsh</span>
+        </div>
+        <div class="term-body">
+          <p class="term-cmd"><span class="prompt">&gt;</span> gwt</p>
+          <p class="term-hint" data-hint>請選擇 Worktree (↑/↓ 移動, Enter 確認, 按 1-5 直接跳轉, q/Esc 取消)：</p>
+          <ol class="menu menu-live" id="live-menu" role="listbox" aria-label="示範的 worktree 清單" tabindex="0"></ol>
+          <p class="term-after" data-after hidden></p>
+        </div>
+      </div>
+      <p class="live-help">用 <kbd>↑</kbd> <kbd>↓</kbd> 或 <kbd>j</kbd> <kbd>k</kbd> 直接操作這個選單，按 <kbd>Enter</kbd> 看看會發生什麼事。</p>
+    </div>
+
+    <div class="how-band">
+      <p class="how-band-name">40 個 worktree 時，選單只顯示終端機放得下的那一段</p>
+      <div class="term term-wide" data-ui>
+        <div class="term-head">
+          <span class="term-title">~/projects/shop</span>
+          <span class="term-shell">zsh</span>
+        </div>
+        <pre class="term-body"><code><span class="line"><span class="prompt">&gt;</span> gwt --list | wc -l
+40</span>
+<span class="line hint">請選擇 Worktree (↑/↓ 移動, Enter 確認, 按 1-40 直接跳轉, q/Esc 取消)：</span>
+<span class="menu"><span class="row"><span class="sel"><span class="num">[8]</span> <span class="path">…/shop-feature-billing</span></span><span class="branch">[feature/billing]</span><span class="sha">(4f21c9b)</span></span>
+<span class="row is-active"><span class="sel"><span class="num">[9]</span> <span class="path">…/shop-feature-search</span></span><span class="branch">[feature/search]</span><span class="sha">(4f21c9b)</span></span>
+<span class="row"><span class="sel"><span class="num">[10]</span> <span class="path">…/shop-fix-cart</span></span><span class="branch">[fix/cart]</span><span class="sha">(4f21c9b)</span></span>
+<span class="row"><span class="sel"><span class="num">[11]</span> <span class="path">…/shop-fix-checkout</span></span><span class="branch">[fix/checkout]</span><span class="sha">(4f21c9b)</span></span>
+<span class="row"><span class="sel"><span class="num">[12]</span> <span class="path">…/shop-hotfix</span></span><span class="branch">[detached]</span><span class="sha">(4f21c9b)</span></span>
+</span>
+<span class="line range">顯示 8-16，共 40 筆</span></code></pre>
+      </div>
+    </div>
+
+    <div class="how-control">
+      <label class="sr-only" for="stage">操作步驟</label>
+      <input class="range" type="range" id="stage" min="0" max="3" step="1" value="0">
+      <ol class="stage-names" id="stage-names">
+        <li><button type="button" data-stage="0" aria-current="true">看清單</button></li>
+        <li><button type="button" data-stage="1">移動光棒</button></li>
+        <li><button type="button" data-stage="2">讀分支</button></li>
+        <li><button type="button" data-stage="3">按 Enter</button></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="keys" id="keys" aria-labelledby="keys-title">
+    <h2 id="keys-title" class="keys-title">六個按鍵<br>就夠了</h2>
+    <div class="keys-body">
+      <div class="keys-table">
+        <p class="keys-name" aria-hidden="true"><span>按鍵</span><span>目錄</span></p>
+        <dl class="rows">
+          <div class="row"><dt>↑ ↓</dt><dd>上下移動，到頭尾會循環</dd><span class="tag">不動</span></div>
+          <div class="row"><dt>j k</dt><dd>跟 Vim 一樣的上下移動</dd><span class="tag">不動</span></div>
+          <div class="row"><dt>1 – 9</dt><dd>直接跳到該編號並切換</dd><span class="tag tag-on">切換</span></div>
+          <div class="row"><dt>Enter</dt><dd>切換到反白的 worktree</dd><span class="tag tag-on">切換</span></div>
+          <div class="row"><dt>q Esc</dt><dd>取消，維持原本的目錄</dd><span class="tag">不動</span></div>
+          <div class="row"><dt>Ctrl C</dt><dd>中斷，游標一定還回來</dd><span class="tag">不動</span></div>
+        </dl>
+        <p class="keys-foot">清單比畫面高時只顯示一段視窗，選取項目會帶著視窗捲動，下方標示目前範圍。</p>
+      </div>
+
+      <div class="porcelain">
+        <p class="porcelain-name">它讀的是這份輸出</p>
+        <div class="term term-mini" data-ui>
+          <div class="term-head"><span class="term-title">git worktree list --porcelain</span></div>
+          <pre class="term-body term-raw"><code>worktree /Users/will/projects/shop
+HEAD 89ae97a1b2c3d4e5f6
+branch refs/heads/main
+
+worktree /Users/will/projects/shop-feature
+HEAD 89ae97a1b2c3d4e5f6
+branch refs/heads/feature/search-api
+
+worktree /Users/will/projects/shop-hotfix
+HEAD 89ae97a1b2c3d4e5f6
+detached</code></pre>
+        </div>
+        <p class="porcelain-note">用 --porcelain 而不是給人看的對齊格式，路徑含空白也不會被切開。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="figures" aria-labelledby="figures-title">
+    <div class="figures-head">
+      <h2 id="figures-title" class="figures-title">小，而且驗過</h2>
+      <p class="figures-say">每一個行為都有測試把關，包含在真的終端機裡送按鍵的互動測試。</p>
+    </div>
+    <div class="tiles">
+      <div class="tile tile-accent">
+        <p class="tile-num">25</p>
+        <p class="tile-cap">個測試，其中 15 個是開著 PTY 送按鍵的互動測試</p>
+      </div>
+      <div class="tile tile-paper">
+        <p class="tile-num">2</p>
+        <p class="tile-cap">個平台跑 CI：Ubuntu 與 macOS</p>
+      </div>
+      <div class="tile tile-ink">
+        <p class="tile-num">0</p>
+        <p class="tile-cap">個執行期依賴，只需要 zsh 與 git</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="faq" id="faq" aria-labelledby="faq-title">
+    <h2 id="faq-title" class="faq-title">常見問題</h2>
+    <div class="cards">
+
+      <article class="card-faq">
+        <button type="button" class="card-head" aria-expanded="false" aria-controls="a1" id="q1">
+          <span class="tab">為什麼</span>
+          <span class="q">為什麼一定要寫成函式？</span>
+        </button>
+        <div class="card-body" id="a1" role="region" aria-labelledby="q1" hidden>
+          <p>獨立腳本跑在子處理序裡，它的 <code>cd</code> 只會影響自己，結束後你的終端機還在原地。只有載入目前 shell 的函式能改變工作目錄，所以 gwt 是一個被 <code>source</code> 的函式，不是執行檔。</p>
+        </div>
+      </article>
+
+      <article class="card-faq">
+        <button type="button" class="card-head" aria-expanded="true" aria-controls="a2" id="q2">
+          <span class="tab">很多筆</span>
+          <span class="q">worktree 幾十個時，選單還準嗎？</span>
+        </button>
+        <div class="card-body" id="a2" role="region" aria-labelledby="q2">
+          <p>會顯示一個符合終端機高度的視窗，選取項目帶著它捲動，下方標示目前範圍。原本清單超過畫面高度時，游標上移會被終端機夾住，整段區塊會飄走，這個問題在 0.1.0 之後修掉了。</p>
+          <div class="term term-mini" data-ui>
+            <div class="term-body">
+              <p class="term-hint">顯示 8-16，共 40 筆</p>
+              <ol class="menu">
+                <li class="row"><span class="sel"><span class="num">[8]</span> <span class="path">…/shop-feature-billing</span></span></li>
+                <li class="row is-active"><span class="sel"><span class="num">[9]</span> <span class="path">…/shop-feature-search</span></span><span class="branch">[feature/search]</span></li>
+                <li class="row"><span class="sel"><span class="num">[10]</span> <span class="path">…/shop-fix-cart</span></span></li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="card-faq">
+        <button type="button" class="card-head" aria-expanded="false" aria-controls="a3" id="q3">
+          <span class="tab">外殼</span>
+          <span class="q">bash 或 fish 可以用嗎？</span>
+        </button>
+        <div class="card-body" id="a3" role="region" aria-labelledby="q3" hidden>
+          <p>目前只支援 zsh，因為用到 <code>read -k</code> 與從 1 起算的陣列索引。改寫成 bash 要換成 <code>read -n 1</code> 並重測游標行為，這件事在待辦清單上。</p>
+        </div>
+      </article>
+
+      <article class="card-faq">
+        <button type="button" class="card-head" aria-expanded="false" aria-controls="a4" id="q4">
+          <span class="tab">安全</span>
+          <span class="q">它會自己刪掉 worktree 嗎？</span>
+        </button>
+        <div class="card-body" id="a4" role="region" aria-labelledby="q4" hidden>
+          <p>不會。gwt 只讀清單、只做 <code>cd</code>，不執行 <code>git worktree prune</code>，也不刪任何目錄。要清掉失效的 worktree 請自己執行 git 的指令。</p>
+        </div>
+      </article>
+
+      <article class="card-faq">
+        <button type="button" class="card-head" aria-expanded="false" aria-controls="a5" id="q5">
+          <span class="tab">調整</span>
+          <span class="q">想改語言、顏色或選單尺寸？</span>
+        </button>
+        <div class="card-body" id="a5" role="region" aria-labelledby="q5" hidden>
+          <p>設定都是環境變數：<code>GWT_LANG</code> 換中英文、<code>GWT_NO_COLOR</code> 關顏色、<code>GWT_WIDTH</code> 與 <code>GWT_HEIGHT</code> 指定選單尺寸、<code>GWT_CLEAR_ON_EXIT</code> 決定選完要不要擦掉選單、<code>GWT_DIGIT_TIMEOUT</code> 調整多位數編號的等待時間。</p>
+        </div>
+      </article>
+
+      <article class="card-faq">
+        <button type="button" class="card-head" aria-expanded="false" aria-controls="a6" id="q6">
+          <span class="tab">升級</span>
+          <span class="q">之後怎麼更新？</span>
+        </button>
+        <div class="card-body" id="a6" role="region" aria-labelledby="q6" hidden>
+          <p>在專案目錄執行 <code>git pull</code> 就是新版；<code>.zshrc</code> 只有一行 source，不必再改。想固定版本就執行 <code>make install</code>，它會把函式庫複製到 <code>~/.zsh/gwt.zsh</code>。</p>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <section class="close" aria-labelledby="close-title">
+    <div class="tile-side tile-side-a" aria-hidden="true"><span class="chev">&gt;</span></div>
+    <div class="tile-main">
+      <h2 id="close-title">先裝起來<br>再回來看</h2>
+      <p class="close-say">兩行指令，之後在任何儲存庫裡打 gwt。</p>
+      <div class="install">
+        <code class="install-cmd">git clone https://github.com/doggy8088/git-worktree-tui.git &amp;&amp; cd git-worktree-tui &amp;&amp; bash install.sh</code>
+        <button class="btn btn-dark" type="button" data-copy="git clone https://github.com/doggy8088/git-worktree-tui.git &amp;&amp; cd git-worktree-tui &amp;&amp; bash install.sh">複製</button>
+      </div>
+      <p class="copy-state" role="status" data-copy-state></p>
+    </div>
+    <div class="tile-side tile-side-b" aria-hidden="true"></div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="foot-mark" aria-hidden="true">
+    <span class="block b1">&gt;</span><span class="block b2">g</span><span class="block b3">w</span><span class="block b4">t</span>
+  </div>
+  <div class="foot-cols">
+    <div>
+      <p class="foot-head">專案</p>
+      <ul>
+        <li><a href="https://github.com/doggy8088/git-worktree-tui">原始碼</a></li>
+        <li><a href="https://github.com/doggy8088/git-worktree-tui#readme">說明文件</a></li>
+        <li><a href="https://github.com/doggy8088/git-worktree-tui/blob/main/CHANGELOG.md">版本記錄</a></li>
+      </ul>
+    </div>
+    <div>
+      <p class="foot-head">深入</p>
+      <ul>
+        <li><a href="https://github.com/doggy8088/git-worktree-tui/blob/main/docs/design-notes.md">設計筆記</a></li>
+        <li><a href="https://github.com/doggy8088/git-worktree-tui/blob/main/docs/roadmap.md">下一步</a></li>
+        <li><a href="https://github.com/doggy8088/git-worktree-tui/issues">問題回報</a></li>
+      </ul>
+    </div>
+    <div>
+      <p class="foot-head">出處</p>
+      <ul>
+        <li><a href="https://blog.miniasp.com/post/2026/10/31/gwt-zsh-tui-switch-git-worktree">原始文章</a></li>
+        <li><a href="https://git-scm.com/docs/git-worktree">git worktree 文件</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot-end">
+    <p>MIT 授權，著作權人 Will 保哥 (Will Huang)。</p>
+    <a class="btn btn-tiny" href="https://github.com/doggy8088/git-worktree-tui">在 GitHub 上看</a>
+  </div>
+</footer>
+
+<script src="assets/app.js"></script>
+</body>
+</html>

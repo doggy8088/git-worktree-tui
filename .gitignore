@@ -15,3 +15,6 @@ __pycache__/
 /tmp/
 .gwt-test-out/
 *.log
+
+# design taste skill 的工作目錄（本機檢查用，不進版控）
+.taste-skill/
