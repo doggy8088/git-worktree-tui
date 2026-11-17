@@ -398,6 +398,9 @@ kbd {
 .row.is-active .sel { background: var(--accent); color: var(--accent-ink); }
 .row.is-active .num { font-weight: 700; }
 
+.row-empty { color: var(--muted); white-space: normal; }
+.row-empty .path { overflow: visible; }
+
 .term-after { margin-top: 14px; color: var(--ink); }
 .term-after .dim { color: var(--muted); }
 

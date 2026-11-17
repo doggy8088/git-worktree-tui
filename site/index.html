@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>gwt — git worktree 的互動式切換指令</title>
-<meta name="description" content="在終端機列出所有 Git worktree，用方向鍵或 j、k 選好，Enter 直接切換目錄。zsh 函式，只依賴 zsh 與 git。">
+<meta name="description" content="在終端機列出所有 Git worktree，用方向鍵或 j、k 選好，按 / 模糊搜尋分支與目錄，Enter 直接切換目錄。zsh 函式，只依賴 zsh 與 git。">
 <meta property="og:title" content="gwt — git worktree 的互動式切換指令">
-<meta property="og:description" content="在終端機列出所有 Git worktree，用方向鍵或 j、k 選好，Enter 直接切換目錄。">
+<meta property="og:description" content="在終端機列出所有 Git worktree，用方向鍵或 j、k 選好，按 / 模糊搜尋，Enter 直接切換目錄。">
 <meta name="author" content="Will 保哥 (Will Huang)">
 <meta name="theme-color" content="#0a0a0b">
 <link rel="canonical" href="https://gwt.gh.miniasp.com/">
@@ -41,7 +41,7 @@
   "alternateName": "git-worktree-tui",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "macOS, Linux",
-  "description": "在終端機列出所有 Git worktree，用方向鍵或 j、k 選好，按 Enter 直接切換目錄的 zsh 函式。只依賴 zsh 與 git。",
+  "description": "在終端機列出所有 Git worktree，用方向鍵或 j、k 選好，按 / 模糊搜尋分支與目錄，按 Enter 直接切換目錄的 zsh 函式。只依賴 zsh 與 git。",
   "url": "https://gwt.gh.miniasp.com/",
   "codeRepository": "https://github.com/doggy8088/git-worktree-tui",
   "license": "https://github.com/doggy8088/git-worktree-tui/blob/main/LICENSE",
@@ -143,7 +143,7 @@
 <span class="line hint">Preparing worktree (new branch 'feature/tests')</span>
 <span class="line gap">&nbsp;</span>
 <span class="line"><span class="prompt">&gt;</span> gwt</span>
-<span class="line hint">請選擇 Worktree (↑/↓ 移動, Enter 確認, 按 1-5 直接跳轉, q/Esc 取消)：</span>
+<span class="line hint">請選擇 Worktree (↑/↓ 移動, Enter 確認, / 搜尋, 按 1-5 直接跳轉, q/Esc 取消)：</span>
 <span class="menu">
 <span class="row"><span class="sel"><span class="num">[1]</span> <span class="path">…/shop</span></span><span class="branch">[main]</span><span class="sha">(89ae97a)</span><span class="mark">(目前位置)</span></span>
 <span class="row"><span class="sel"><span class="num">[2]</span> <span class="path">…/shop-feature-login</span></span><span class="branch">[feature/login]</span><span class="sha">(89ae97a)</span></span>
@@ -185,12 +185,12 @@
         </div>
         <div class="term-body">
           <p class="term-cmd"><span class="prompt">&gt;</span> gwt</p>
-          <p class="term-hint" data-hint>請選擇 Worktree (↑/↓ 移動, Enter 確認, 按 1-5 直接跳轉, q/Esc 取消)：</p>
+          <p class="term-hint" data-hint aria-live="polite">請選擇 Worktree (↑/↓ 移動, Enter 確認, / 搜尋, 按 1-5 直接跳轉, q/Esc 取消)：</p>
           <ol class="menu menu-live" id="live-menu" role="listbox" aria-label="示範的 worktree 清單" tabindex="0"></ol>
           <p class="term-after" data-after hidden></p>
         </div>
       </div>
-      <p class="live-help">用 <kbd>↑</kbd> <kbd>↓</kbd> 或 <kbd>j</kbd> <kbd>k</kbd> 直接操作這個選單，按 <kbd>Enter</kbd> 看看會發生什麼事。</p>
+      <p class="live-help">先點一下選單，用 <kbd>↑</kbd> <kbd>↓</kbd> 或 <kbd>j</kbd> <kbd>k</kbd> 操作，按 <kbd>/</kbd> 可以直接模糊搜尋，按 <kbd>Enter</kbd> 看看會發生什麼事。</p>
     </div>
 
     <div class="how-band">

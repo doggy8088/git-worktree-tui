@@ -1,6 +1,6 @@
 /* ===========================================================================
    gwt — 頁面行為
-   1) 示範選單：真的可以用鍵盤操作，和工具本身的行為一致
+   1) 示範選單：真的可以用鍵盤操作（含 / 模糊搜尋），和工具本身的行為一致
    2) 四個階段：滑桿與選單雙向連動
    3) 常見問題：一次只開一張
    4) 複製安裝指令
@@ -38,7 +38,7 @@
     },
     {
       clause: '用方向鍵移動光棒',
-      say: '↑ ↓ 或 j／k 都能移動，到頭尾會循環；光棒只反白到路徑為止，後面的分支與 commit 保持原色。',
+      say: '↑ ↓ 或 j／k 都能移動，按 / 則直接模糊搜尋分支與目錄名稱；光棒只反白到路徑為止，後面的分支與 commit 保持原色。',
       selected: 0
     },
     {
@@ -56,10 +56,116 @@
 
   var stage = 0;
   var selected = -1;
+  var view = WORKTREES.slice();
+  var searching = false;
+  var query = '';
+
+  function basename(path) {
+    var parts = path.split('/');
+    return parts[parts.length - 1] || path;
+  }
+
+  /* 與 gwt.zsh 的 _gwt_fuzzy_term 相同的子序列評分。兩邊要一起改，不然網站
+     示範和終端機的排序會不一致。 */
+  function fuzzyTerm(haystack, term) {
+    haystack = haystack.toLowerCase();
+    term = term.toLowerCase();
+    if (!term) return 0;
+
+    var hi = 0;
+    var score = 0;
+    var last = -1;
+    var run = 0;
+
+    for (var ti = 0; ti < term.length; ti++) {
+      var ch = term.charAt(ti);
+      while (hi < haystack.length && haystack.charAt(hi) !== ch) hi++;
+      if (hi >= haystack.length) return null;
+
+      score += 10;
+      if (last >= 0) {
+        if (hi === last + 1) {
+          run += 1;
+          score += 6 + run * 2;
+        } else {
+          run = 0;
+          score -= Math.min(hi - last - 1, 4);
+        }
+      }
+
+      if (hi === 0) {
+        score += 14;
+      } else if ('/-_. '.indexOf(haystack.charAt(hi - 1)) !== -1) {
+        score += 10;
+      }
+
+      last = hi;
+      hi += 1;
+    }
+
+    return score - Math.floor(haystack.length / 5);
+  }
+
+  /* 查詢以空白切成多個詞，每個詞都要命中分支或目錄名稱（AND）。 */
+  function fuzzyMatch(item, text) {
+    var terms = text.split(/\s+/).filter(Boolean);
+    if (!terms.length) return 0;
+
+    var base = basename(item.path);
+    var total = 0;
+
+    for (var i = 0; i < terms.length; i++) {
+      var onBranch = fuzzyTerm(item.branch, terms[i]);
+      var onBase = fuzzyTerm(base, terms[i]);
+      if (onBranch === null && onBase === null) return null;
+      if (onBranch === null) total += onBase;
+      else if (onBase === null) total += onBranch;
+      else total += Math.max(onBranch, onBase);
+    }
+
+    return total;
+  }
+
+  function refilter() {
+    if (!query.trim()) {
+      view = WORKTREES.slice();
+      return;
+    }
+
+    var scored = [];
+    WORKTREES.forEach(function (item, index) {
+      var score = fuzzyMatch(item, query);
+      if (score !== null) scored.push({ item: item, index: index, score: score });
+    });
+    scored.sort(function (a, b) {
+      return b.score - a.score || a.index - b.index;
+    });
+    view = scored.map(function (entry) { return entry.item; });
+  }
+
+  function updateHint() {
+    if (!hint) return;
+    if (searching) {
+      hint.textContent = '搜尋：' + query + '▏  ' + view.length +
+        ' 筆符合 (↑/↓ 移動, Enter 確認, Esc 清除搜尋)：';
+    } else {
+      hint.textContent = '請選擇 Worktree (↑/↓ 移動, Enter 確認, / 搜尋, 按 1-' +
+        view.length + ' 直接跳轉, q/Esc 取消)：';
+    }
+  }
 
   function renderMenu() {
     if (!menu) return;
-    menu.innerHTML = WORKTREES.map(function (item, index) {
+    updateHint();
+
+    if (!view.length) {
+      menu.innerHTML = '<li class="row row-empty" role="presentation">' +
+        '<span class="path">沒有符合搜尋條件的 worktree。</span></li>';
+      menu.removeAttribute('aria-activedescendant');
+      return;
+    }
+
+    menu.innerHTML = view.map(function (item, index) {
       var active = index === selected ? ' is-active' : '';
       return (
         '<li class="row' + active + '" role="option" id="live-row-' + index + '"' +
@@ -79,7 +185,12 @@
     stage = Math.max(0, Math.min(STAGES.length - 1, next));
     var state = STAGES[stage];
 
-    if (!fromMenu) selected = state.selected;
+    if (!fromMenu) {
+      searching = false;
+      query = '';
+      view = WORKTREES.slice();
+      selected = state.selected;
+    }
 
     renderMenu();
 
@@ -89,9 +200,10 @@
 
     if (after) {
       if (state.done) {
+        var chosen = view[selected] || WORKTREES[2];
         after.hidden = false;
         after.innerHTML = '<span class="prompt">&gt;</span> <span class="dim">cd ~/projects/' +
-          WORKTREES[state.selected].path.split('/').pop() + '</span>' +
+          chosen.path.split('/').pop() + '</span>' +
           '<span class="caret" aria-hidden="true"></span>';
         if (menu) menu.hidden = true;
         if (hint) hint.hidden = true;
@@ -109,18 +221,115 @@
     });
   }
 
+  function enterSearch() {
+    searching = true;
+    query = '';
+    view = WORKTREES.slice();
+    selected = view.length ? 0 : -1;
+    renderStage(1, true);
+  }
+
+  function exitSearch() {
+    searching = false;
+    query = '';
+    view = WORKTREES.slice();
+    selected = view.length ? 0 : -1;
+    renderStage(1, true);
+  }
+
+  function applyQuery() {
+    refilter();
+    selected = view.length ? 0 : -1;
+    renderStage(1, true);
+  }
+
   if (menu) {
     renderStage(0);
 
     menu.addEventListener('keydown', function (event) {
+      if (event.isComposing) return;
+
       var key = event.key;
+
+      if (searching) {
+        if (key === 'Escape') {
+          exitSearch();
+          event.preventDefault();
+          return;
+        }
+
+        if (key === 'ArrowDown' || key === 'ArrowUp') {
+          if (!view.length) {
+            event.preventDefault();
+            return;
+          }
+          if (selected < 0) {
+            selected = 0;
+          } else {
+            selected += key === 'ArrowDown' ? 1 : -1;
+            if (selected < 0) selected = view.length - 1;
+            if (selected >= view.length) selected = 0;
+          }
+          after && (after.hidden = true);
+          renderStage(1, true);
+          event.preventDefault();
+          return;
+        }
+
+        if (key === 'Enter') {
+          if (view.length && selected >= 0) renderStage(3, true);
+          event.preventDefault();
+          return;
+        }
+
+        if (key === 'Backspace') {
+          if (query) {
+            query = query.slice(0, -1);
+            applyQuery();
+          }
+          event.preventDefault();
+          return;
+        }
+
+        if (event.ctrlKey && (key === 'u' || key === 'U')) {
+          if (query) {
+            query = '';
+            applyQuery();
+          }
+          event.preventDefault();
+          return;
+        }
+
+        if (event.ctrlKey && (key === 'w' || key === 'W')) {
+          if (query) {
+            var trimmed = query.replace(/\s+$/, '');
+            var cut = trimmed.lastIndexOf(' ');
+            query = cut >= 0 ? trimmed.slice(0, cut) : '';
+            applyQuery();
+          }
+          event.preventDefault();
+          return;
+        }
+
+        if (key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          query += key;
+          applyQuery();
+          event.preventDefault();
+        }
+        return;
+      }
+
       var moved = null;
 
-      if (key === 'ArrowDown' || key === 'j' || key === 'J') moved = 1;
+      if (key === '/') {
+        enterSearch();
+        event.preventDefault();
+        return;
+      } else if (key === 'ArrowDown' || key === 'j' || key === 'J') moved = 1;
       else if (key === 'ArrowUp' || key === 'k' || key === 'K') moved = -1;
       else if (/^[1-9]$/.test(key)) {
         var pick = Number(key) - 1;
-        if (pick < WORKTREES.length) {
+        if (pick < view.length) {
           selected = pick;
           after && (after.hidden = true);
           renderStage(3, true);
@@ -143,8 +352,8 @@
       if (selected < 0) selected = 0;
       else {
         selected += moved;
-        if (selected < 0) selected = WORKTREES.length - 1;
-        if (selected >= WORKTREES.length) selected = 0;
+        if (selected < 0) selected = view.length - 1;
+        if (selected >= view.length) selected = 0;
       }
       after && (after.hidden = true);
       renderStage(1, true);
