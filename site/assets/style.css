@@ -361,6 +361,8 @@ kbd {
 .term-body .after { margin-top: 14px; }
 .term-body .after .dim { color: var(--muted); }
 .term-body .menu { display: block; margin: 6px 0 0; }
+/* hidden 屬性被上面的 display 蓋掉，完成畫面要明確關掉 */
+.term-body .menu[hidden] { display: none; }
 
 .term-cmd { color: var(--ink); }
 .prompt { color: var(--accent); margin-right: 0.4em; }
@@ -403,6 +405,8 @@ kbd {
 
 .term-after { margin-top: 14px; color: var(--ink); }
 .term-after .dim { color: var(--muted); }
+.term-after .after-hint { margin-left: 1ch; color: var(--muted); font-size: var(--t-small); }
+.term-after:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 
 .caret {
   display: inline-block;

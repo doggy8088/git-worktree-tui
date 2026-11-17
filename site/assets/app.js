@@ -23,6 +23,7 @@
   ];
 
   var menu = document.getElementById('live-menu');
+  var termLive = menu ? menu.closest('.term-live') : null;
   var hint = document.querySelector('[data-hint]');
   var after = document.querySelector('[data-after]');
   var clause = document.querySelector('[data-clause]');
@@ -204,9 +205,11 @@
         after.hidden = false;
         after.innerHTML = '<span class="prompt">&gt;</span> <span class="dim">cd ~/projects/' +
           chosen.path.split('/').pop() + '</span>' +
-          '<span class="caret" aria-hidden="true"></span>';
+          '<span class="caret" aria-hidden="true"></span>' +
+          '<span class="after-hint">按 Esc 回到選單</span>';
         if (menu) menu.hidden = true;
         if (hint) hint.hidden = true;
+        if (fromMenu) after.focus({ preventScroll: true });
       } else {
         after.hidden = true;
         if (menu) menu.hidden = false;
@@ -337,6 +340,8 @@
           return;
         }
       } else if (key === 'Enter') {
+        // 初始畫面還沒有選取項目，直接按 Enter 時先選第一筆，不要讓它沒反應
+        if (selected < 0 && view.length) selected = 0;
         if (selected >= 0) renderStage(3, true);
         event.preventDefault();
         return;
@@ -359,6 +364,43 @@
       renderStage(1, true);
     });
   }
+
+  if (after) {
+    after.addEventListener('keydown', function (event) {
+      if (stage !== 3) return;
+      var key = event.key;
+      if (key === 'Escape' || key === 'q' || key === 'Q' || key === 'Enter' || key === ' ') {
+        renderStage(0);
+        if (menu) menu.focus({ preventScroll: true });
+        event.preventDefault();
+      }
+    });
+  }
+
+  if (termLive) {
+    // 點選單、提示列或終端機空白處都算「要操作這個選單」，避免使用者以為壞了
+    termLive.addEventListener('click', function () {
+      if (menu && !menu.hidden) menu.focus({ preventScroll: true });
+    });
+  }
+
+  // 示範區在畫面上時，即使沒有先點選單，按 / 也能直接開始搜尋。
+  // 只在 focus 還停在 body 時接手，避免搶走連結、表單或瀏覽器本身的按鍵。
+  var demoInView = false;
+  if (termLive && 'IntersectionObserver' in window) {
+    new IntersectionObserver(function (entries) {
+      demoInView = entries[0].isIntersecting;
+    }, { threshold: 0.35 }).observe(termLive);
+  }
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== '/' || searching || !menu || menu.hidden) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (!demoInView || document.activeElement !== document.body) return;
+    menu.focus({ preventScroll: true });
+    enterSearch();
+    event.preventDefault();
+  });
 
   if (slider) {
     slider.addEventListener('input', function () {
