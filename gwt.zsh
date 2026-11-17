@@ -31,6 +31,7 @@ typeset -g GWT_VERSION='0.1.0'
 : ${GWT_ESC_TIMEOUT:=0.05}              # 判斷單獨 Esc 與方向鍵的等待秒數
 : ${GWT_NO_COLOR:=0}                    # 1 = 關閉所有顏色
 : ${GWT_WIDTH:=0}                       # 選單寬度，0 = 自動偵測
+: ${GWT_HEIGHT:=0}                      # 選單可用高度，0 = 自動偵測
 
 # -----------------------------------------------------------------------------
 # 介面文字
@@ -49,6 +50,7 @@ _gwt_load_msgs() {
       _GWT_M[mark]='(current)'
       _GWT_M[detached]='detached'
       _GWT_M[header]='Select a worktree (↑/↓ move, Enter confirm, 1-%d jump, q/Esc cancel):'
+      _GWT_M[range]='showing %d-%d of %d'
       _GWT_HELP='Usage: gwt [options] [keyword]
 
 Switch between all worktrees of the current Git repository by changing the
@@ -74,7 +76,9 @@ Environment:
   GWT_FILTER_CASE_INSENSITIVE  case-insensitive keyword match (1/0, default 1)
   GWT_DIGIT_TIMEOUT            seconds to wait for a second digit (default 0.4)
   GWT_NO_COLOR                 disable colors (1/0, default 0)
-  GWT_WIDTH                    menu width in columns (0 = auto)'
+  GWT_WIDTH                    menu width in columns (0 = auto)
+  GWT_HEIGHT                   menu height in rows (0 = auto; a shorter
+                               list is shown in a scrolling window)'
       ;;
     *)
       _GWT_M[not_repo]='gwt: 目前目錄不在 Git 儲存庫中。'
@@ -85,6 +89,7 @@ Environment:
       _GWT_M[mark]='(目前位置)'
       _GWT_M[detached]='detached'
       _GWT_M[header]='請選擇 Worktree (↑/↓ 移動, Enter 確認, 按 1-%d 直接跳轉, q/Esc 取消)：'
+      _GWT_M[range]='顯示 %d-%d，共 %d 筆'
       _GWT_HELP='用法：gwt [選項] [關鍵字]
 
 在目前 Git 儲存庫的所有 worktree 之間互動式切換，
@@ -111,7 +116,9 @@ Environment:
   GWT_DIGIT_TIMEOUT           多位數編號的等待秒數（預設 0.4）
   GWT_ESC_TIMEOUT             判斷單獨 Esc 的等待秒數（預設 0.05）
   GWT_NO_COLOR                關閉顏色（1/0，預設 0）
-  GWT_WIDTH                   選單寬度（0 = 自動偵測）'
+  GWT_WIDTH                   選單寬度（0 = 自動偵測）
+  GWT_HEIGHT                  選單可用高度（0 = 自動偵測，
+                              清單較高時只顯示一個會捲動的視窗）'
       ;;
   esac
 }
@@ -121,9 +128,10 @@ Environment:
 # -----------------------------------------------------------------------------
 typeset -ga _GWT_PATHS _GWT_BRANCHES _GWT_HEADS
 typeset -gi _GWT_COUNT=0 _GWT_SELECTED=0 _GWT_DRAWN=0 _GWT_WIDTH=80 _GWT_SW=0
+typeset -gi _GWT_HEIGHT=24 _GWT_VISIBLE=0 _GWT_TOP=1 _GWT_SCROLLED=0
 typeset -g  _GWT_CURRENT='' _GWT_PENDING_KEY=''
 typeset -gi _GWT_INTERRUPTED=0
-typeset -g  _GWT_S_RESET='' _GWT_S_BAR='' _GWT_S_BRANCH='' _GWT_S_MARK=''
+typeset -g  _GWT_S_RESET='' _GWT_S_BAR='' _GWT_S_BRANCH='' _GWT_S_MARK='' _GWT_S_DIM=''
 
 _gwt_reset_state() {
   _GWT_PATHS=()
@@ -132,6 +140,10 @@ _gwt_reset_state() {
   _GWT_COUNT=0
   _GWT_SELECTED=0
   _GWT_DRAWN=0
+  _GWT_HEIGHT=24
+  _GWT_VISIBLE=0
+  _GWT_TOP=1
+  _GWT_SCROLLED=0
   _GWT_CURRENT=''
   _GWT_PENDING_KEY=''
   _GWT_INTERRUPTED=0
@@ -211,22 +223,57 @@ _gwt_clip_middle() {
   REPLY="${head}…${tail}"
 }
 
-_gwt_init_width() {
-  local -i w=${GWT_WIDTH:-0}
+# 高度與寬度一起量。這裡用 stty size 而不是 COLUMNS/LINES，因為環境變數
+# 可能過期（例如在 tmux 裡換了 pane 大小），而 stty size 直接問終端機。
+_gwt_init_size() {
+  local -i h=${GWT_HEIGHT:-0} w=${GWT_WIDTH:-0}
+  local -a parts=()
+  if (( h <= 0 || w <= 0 )) && [[ -t 1 ]]; then
+    parts=(${=$(stty size 2>/dev/null)})
+  fi
+  if (( h <= 0 )); then
+    [[ ${parts[1]:-} == <-> ]] && h=$parts[1]
+    (( h <= 0 )) && h=${LINES:-0}
+    (( h <= 0 )) && h=24
+  fi
   if (( w <= 0 )); then
-    if [[ -t 1 ]]; then
-      w=${COLUMNS:-0}
-      if (( w <= 0 )); then
-        w=$(tput cols 2>/dev/null)
-        [[ $w == <-> ]] || w=0
-      fi
-    fi
+    [[ ${parts[2]:-} == <-> ]] && w=$parts[2]
+    (( w <= 0 )) && w=${COLUMNS:-0}
     (( w <= 0 )) && w=80
   fi
+  (( h < 6 )) && h=6
   # 多留一欄，避免最後一欄剛好觸發終端機自動換行
   w=$(( w - 1 ))
   (( w < 24 )) && w=24
+  _GWT_HEIGHT=$h
   _GWT_WIDTH=$w
+}
+
+# 決定這次要畫哪幾列。重點：表頭 + 可視列 + 提示列 + 游標那一列，
+# 加起來不能超過終端機高度，否則終端機會上捲，而「游標往上 N 行」
+# 在畫面頂端會被夾住，重繪就整個錯位。
+_gwt_layout() {
+  local -i avail max_top
+  if (( _GWT_COUNT + 2 <= _GWT_HEIGHT )); then
+    _GWT_VISIBLE=$_GWT_COUNT
+    _GWT_SCROLLED=0
+  else
+    avail=$(( _GWT_HEIGHT - 3 ))     # 表頭 1 + 提示列 1 + 游標那一列 1
+    (( avail < 1 )) && avail=1
+    _GWT_VISIBLE=$avail
+    _GWT_SCROLLED=1
+  fi
+
+  # 讓選取項目永遠留在可視範圍內
+  if (( _GWT_SELECTED < _GWT_TOP )); then
+    _GWT_TOP=$_GWT_SELECTED
+  elif (( _GWT_SELECTED > _GWT_TOP + _GWT_VISIBLE - 1 )); then
+    _GWT_TOP=$(( _GWT_SELECTED - _GWT_VISIBLE + 1 ))
+  fi
+  (( _GWT_TOP < 1 )) && _GWT_TOP=1
+  max_top=$(( _GWT_COUNT - _GWT_VISIBLE + 1 ))
+  (( max_top < 1 )) && max_top=1
+  (( _GWT_TOP > max_top )) && _GWT_TOP=$max_top
 }
 
 _gwt_init_style() {
@@ -239,11 +286,13 @@ _gwt_init_style() {
     _GWT_S_BAR=$'\e[1;30;46m'      # 粗體 + 黑字 + 青色底：選取光棒
     _GWT_S_BRANCH=$'\e[36m'        # 青色：分支名稱
     _GWT_S_MARK=$'\e[33m'          # 黃色：目前位置
+    _GWT_S_DIM=$'\e[2m'            # 暗色：顯示範圍提示
   else
     _GWT_S_RESET=''
     _GWT_S_BAR=''
     _GWT_S_BRANCH=''
     _GWT_S_MARK=''
+    _GWT_S_DIM=''
   fi
 }
 
@@ -297,6 +346,8 @@ _gwt_collect_one() {
 # -----------------------------------------------------------------------------
 # 產生第 i 列的文字，結果放在 REPLY。
 # 光棒只反白到路徑為止，分支與狀態維持原色，方便一眼辨識。
+# 每一列都必須控制在一個實體行內，否則折行會讓「往上移 N 行」算錯。
+# 預算分配：前綴 → 間隔 2 欄 → 後方資訊 → 剩下的全部給路徑（至少 12 欄）。
 _gwt_format_row() {
   local -i i=$1 sel=0
   (( i == _GWT_SELECTED )) && sel=1
@@ -312,43 +363,70 @@ _gwt_format_row() {
     prefix="   [$i] "
   fi
 
-  local suffix=" ${_GWT_S_BRANCH}[${branch}]${_GWT_S_RESET} (${head})"
+  local -i gap=2
+  local -i tail_budget=$(( _GWT_WIDTH - ${#prefix} - gap - 12 ))
+  (( tail_budget < 8 )) && tail_budget=8
+
+  # 目前位置標註：空間不夠就省略，優先保留路徑與分支
+  local mark=''
   if [[ -n $_GWT_CURRENT && ${wt_path:A} == ${_GWT_CURRENT:A} ]]; then
-    suffix+=" ${_GWT_S_MARK}${_GWT_M[mark]}${_GWT_S_RESET}"
+    _gwt_swidth "${_GWT_M[mark]}"
+    if (( _GWT_SW + 1 <= tail_budget - 12 )); then
+      mark=${_GWT_M[mark]}
+      (( tail_budget -= _GWT_SW + 1 ))
+    fi
   fi
 
-  # 可用於路徑的欄寬 = 總寬 - 編號前綴 - 後方分支資訊
-  local -i avail=$(( _GWT_WIDTH - ${#prefix} - 2 ))
-  _gwt_width_of "$suffix"
-  avail=$(( avail - _GWT_SW ))
-  (( avail < 12 )) && avail=12
+  # [branch] (commit) 的固定成本是 12 欄：'[' ']' 空白 '(' 7 碼 ')'
+  local -i branch_budget=$(( tail_budget - 12 ))
+  (( branch_budget < 1 )) && branch_budget=1
+  _gwt_clip_middle "$branch" "$branch_budget"
+  local branch_shown=$REPLY
 
+  local suffix="${_GWT_S_BRANCH}[${branch_shown}]${_GWT_S_RESET} (${head})"
+  [[ -n $mark ]] && suffix+=" ${_GWT_S_MARK}${mark}${_GWT_S_RESET}"
+
+  _gwt_width_of "$suffix"
+  local -i avail=$(( _GWT_WIDTH - ${#prefix} - gap - _GWT_SW ))
+  (( avail < 4 )) && avail=4
   _gwt_clip_middle "$wt_path" "$avail"
   local shown=$REPLY
 
   if (( sel )); then
-    REPLY="${_GWT_S_BAR}${prefix}${shown} ${_GWT_S_RESET}${suffix}"
+    # 光棒只反白到路徑為止，後方分支與狀態維持原色
+    REPLY="${_GWT_S_BAR}${prefix}${shown} ${_GWT_S_RESET} ${suffix}"
   else
     REPLY="${prefix}${shown}  ${suffix}"
   fi
 }
 
 _gwt_draw() {
-  local -i i
-  for (( i = 1; i <= _GWT_COUNT; i++ )); do
+  _gwt_layout
+  local -i i last=$(( _GWT_TOP + _GWT_VISIBLE - 1 ))
+  (( last > _GWT_COUNT )) && last=$_GWT_COUNT
+
+  for (( i = _GWT_TOP; i <= last; i++ )); do
     printf '\r\e[2K'
     _gwt_format_row "$i"
     printf '%s\n' "$REPLY"
   done
-  _GWT_DRAWN=$(( _GWT_COUNT + 1 ))
+  _GWT_DRAWN=$(( last - _GWT_TOP + 1 ))
+
+  if (( _GWT_SCROLLED )); then
+    local text=''
+    printf -v text "${_GWT_M[range]}" "$_GWT_TOP" "$last" "$_GWT_COUNT"
+    _gwt_clip_middle "$text" "$(( _GWT_WIDTH - 3 ))"
+    printf '\r\e[2K%s   %s%s\n' "$_GWT_S_DIM" "$REPLY" "$_GWT_S_RESET"
+    (( _GWT_DRAWN++ ))
+  fi
 }
 
 # 收尾：移除 trap、視需要擦掉選單、把游標還給使用者。
 # 不論是 Enter、數字鍵、q/Esc、Ctrl+C 或讀不到輸入，都必須經過這裡。
 _gwt_finish() {
   trap - INT TERM
-  if (( ${GWT_CLEAR_ON_EXIT:-1} )); then
-    printf '\e[%dA\e[J' "$_GWT_DRAWN"
+  if (( ${GWT_CLEAR_ON_EXIT:-1} )) && (( _GWT_DRAWN > 0 )); then
+    printf '\e[%dA\e[J' "$(( _GWT_DRAWN + 1 ))"
   fi
   printf '\e[?25h'
 }
@@ -391,7 +469,7 @@ _gwt_pick() {
   local key='' rest=''
   _GWT_SELECTED=1
   _GWT_PENDING_KEY=''
-  _gwt_init_width
+  _gwt_init_size
   _gwt_init_style
 
   # 選單顯示期間隱藏游標；trap 保證中斷時游標與終端狀態都會復原。
@@ -401,7 +479,12 @@ _gwt_pick() {
   printf '\e[?25l'
   trap '_GWT_INTERRUPTED=1; _gwt_finish; return 130' INT TERM
 
-  printf "${_GWT_M[header]}\n" "$_GWT_COUNT"
+  # 表頭也要裁到一行以內，否則終端機自動折行會讓行數計算失準
+  local header=''
+  printf -v header "${_GWT_M[header]}" "$_GWT_COUNT"
+  _gwt_clip_middle "$header" "$_GWT_WIDTH"
+  printf '%s\n' "$REPLY"
+
   _gwt_draw
 
   while true; do
@@ -438,6 +521,9 @@ _gwt_pick() {
       [1-9])
         _gwt_pick_number "$key"
         if (( _GWT_SELECTED >= 1 && _GWT_SELECTED <= _GWT_COUNT )); then
+          # 先重畫一次，讓使用者看到最後落在哪一筆
+          printf '\e[%dA' "$_GWT_DRAWN"
+          _gwt_draw
           _gwt_finish
           return 0
         fi
@@ -448,8 +534,8 @@ _gwt_pick() {
         ;;
     esac
 
-    # 回到選單第一列重畫
-    printf '\e[%dA' "$_GWT_COUNT"
+    # 回到這一塊的第一列重畫
+    printf '\e[%dA' "$_GWT_DRAWN"
     _gwt_draw
   done
 }

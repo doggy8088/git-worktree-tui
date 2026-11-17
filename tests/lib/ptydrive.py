@@ -52,6 +52,8 @@ def main() -> int:
         help="輸出靜止幾秒後才送按鍵（預設 0.3）",
     )
     parser.add_argument("--timeout", type=float, default=20.0, help="總執行上限秒數")
+    parser.add_argument("--rows", type=int, default=ROWS, help="PTY 高度（預設 40）")
+    parser.add_argument("--cols", type=int, default=COLS, help="PTY 寬度（預設 100）")
     parser.add_argument("cmd", nargs=argparse.REMAINDER, help="-- 之後是要執行的指令")
     args = parser.parse_args()
 
@@ -70,7 +72,9 @@ def main() -> int:
         finally:
             os._exit(127)
 
-    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", ROWS, COLS, 0, 0))
+    fcntl.ioctl(
+        fd, termios.TIOCSWINSZ, struct.pack("HHHH", args.rows, args.cols, 0, 0)
+    )
 
     out = bytearray()
     sent = False
