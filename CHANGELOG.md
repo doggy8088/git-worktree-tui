@@ -2,9 +2,11 @@
 
 格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版本號參考 [Semantic Versioning](https://semver.org/lang/zh-TW/)。
 
-## [1.0.0] - 2026-11-17
+## [0.1.0] - 2026-11-17
 
-第一個公開版本：把部落格文章裡的 `gwt` 函式整理成可維護、有測試的專案。
+第一個公開版本（0.1.0）：把部落格文章裡的 `gwt` 函式整理成可維護、有測試的專案。
+
+版號從 0.1.0 起算，介面與行為在 1.0.0 之前仍可能調整。
 
 ### 新增
 
@@ -39,4 +41,4 @@
 - `_GWT_COUNT` 原本只在 `gwt` 內設定，單獨呼叫 `_gwt_collect` 時不會更新。
 - `Makefile` 的 `ZSH` 變數與 oh-my-zsh 的 `$ZSH`（安裝目錄）衝突，導致 `make lint` 失敗；改名為 `ZSHBIN`。
 
-[1.0.0]: https://github.com/doggy8088/git-worktree-tui/releases
+[0.1.0]: https://github.com/doggy8088/git-worktree-tui/releases
