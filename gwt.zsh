@@ -272,6 +272,7 @@ _gwt_collect() {
         ;;
     esac
   done
+  _GWT_COUNT=${#_GWT_PATHS}
 }
 
 _gwt_collect_one() {
@@ -496,8 +497,6 @@ gwt() {
   # 用 process substitution 讀 porcelain，最後補一個換行，
   # 確保最後一組資料一定以空行結尾而被收進陣列。
   _gwt_collect "$keyword" < <(git worktree list --porcelain 2>/dev/null; printf '\n')
-
-  _GWT_COUNT=${#_GWT_PATHS}
 
   if (( _GWT_COUNT == 0 )); then
     if [[ -n $keyword ]]; then
