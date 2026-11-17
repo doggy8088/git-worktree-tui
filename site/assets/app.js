@@ -193,10 +193,29 @@
       var text = button.getAttribute('data-copy').replace(/&amp;/g, '&');
       var status = states[index] || states[0];
 
+      // 沒有剪貼簿權限時（例如 file:// 或使用者拒絕），直接把指令選取起來
+      function selectCommand() {
+        var scope = button.closest('section') || document;
+        var target = scope.querySelector('.install-code code') || scope.querySelector('.install-cmd');
+        if (!target) return false;
+        var range = document.createRange();
+        range.selectNodeContents(target);
+        var selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        return true;
+      }
+
       function done(ok) {
         if (!status) return;
-        status.textContent = ok ? '已複製，貼到終端機就好。' : '請手動選取上方的指令複製。';
-        window.setTimeout(function () { status.textContent = ''; }, 4000);
+        if (ok) {
+          status.textContent = '已複製，貼到終端機就好。';
+        } else {
+          status.textContent = selectCommand()
+            ? '已選取指令，按 Command-C 或 Ctrl-C 複製。'
+            : '請手動選取上方的指令複製。';
+        }
+        window.setTimeout(function () { status.textContent = ''; }, 5000);
       }
 
       if (navigator.clipboard && navigator.clipboard.writeText) {

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<title>gwt 社群分享卡</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0b; --ink: #f1f2f3; --muted: #a6acb4;
+    --accent: #2ee6e6; --field: #f4c451; --accent-ink: #04161a;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    width: 1200px; height: 630px; background: var(--bg); color: var(--ink);
+    font-family: "Jost", system-ui, sans-serif;
+    padding: 56px 64px; display: flex; flex-direction: column; gap: 20px;
+    overflow: hidden;
+  }
+  .mark { display: flex; align-items: center; gap: 4px; font-weight: 700; font-size: 28px; }
+  .mark span { color: var(--accent); }
+  h1 {
+    font-size: 78px; font-weight: 700; line-height: 1.08; letter-spacing: -0.02em;
+    margin-top: 6px;
+  }
+  h1 span { display: block; white-space: nowrap; }
+  .lead { font-size: 23px; color: var(--muted); white-space: nowrap; }
+  .term {
+    margin-top: auto; background: #08090a; border-radius: 14px; padding: 18px 20px;
+    font-family: var(--mono); font-size: 17px; line-height: 1.85; color: #d9dde2;
+    white-space: nowrap; overflow: hidden;
+  }
+  .hint { color: var(--muted); font-size: 15px; }
+  .row { display: block; }
+  .branch { color: var(--accent); }
+  .sha { color: #98a0a9; }
+  .cur { color: var(--field); }
+  .active { background: var(--accent); color: var(--accent-ink); padding: 0 6px; border-radius: 3px; }
+  .active .branch { color: var(--accent-ink); }
+</style>
+</head>
+<body>
+  <div class="mark"><span>&gt;</span>gwt</div>
+  <h1><span>git worktree</span><span>互動式切換指令</span></h1>
+  <p class="lead">列出所有 worktree，用方向鍵選好，Enter 直接切換目錄。</p>
+  <div class="term">
+    <div class="hint">請選擇 Worktree (↑/↓ 移動, Enter 確認)：</div>
+    <div class="row">[1] …/shop <span class="branch">[main]</span> <span class="cur">(目前位置)</span></div>
+    <div class="row"><span class="active">[2] …/shop-feature-search-api</span> <span class="branch">[feature/search-api]</span> <span class="sha">(89ae97a)</span></div>
+    <div class="row">[3] …/shop-hotfix <span class="branch">[detached]</span> <span class="sha">(89ae97a)</span></div>
+  </div>
+</body>
+</html>

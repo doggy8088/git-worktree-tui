@@ -190,6 +190,7 @@ make help      # 列出所有指令
 make test      # 執行全部測試（單元 + PTY 互動）
 make lint      # zsh -n 語法檢查 + python 編譯檢查
 make demo      # 建一個含 5 個 worktree 的示範儲存庫
+make site      # 在本機預覽網站（http://localhost:8765）
 make install   # 安裝到 ~/.zsh/gwt.zsh
 make clean     # 清除暫存產物
 ```
@@ -230,6 +231,9 @@ git-worktree-tui/
 │   └── roadmap.md           # 後續想做的事
 ├── scripts/
 │   └── demo.sh              # 建立示範儲存庫
+├── site/                    # 官方網站（GitHub Pages，部署到 gwt.gh.miniasp.com）
+├── tools/
+│   └── social-card.html     # 社群分享卡的來源，以 1200×630 截圖產生 site/assets/og.png
 └── tests/
     ├── run.sh               # 測試入口
     ├── cases/               # 單元測試（不需要終端機）

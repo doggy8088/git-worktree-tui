@@ -7,9 +7,59 @@
 <meta name="description" content="在終端機列出所有 Git worktree，用方向鍵或 j、k 選好，Enter 直接切換目錄。zsh 函式，只依賴 zsh 與 git。">
 <meta property="og:title" content="gwt — git worktree 的互動式切換指令">
 <meta property="og:description" content="在終端機列出所有 Git worktree，用方向鍵或 j、k 選好，Enter 直接切換目錄。">
-<meta property="og:type" content="website">
-<meta property="og:url" content="https://gwt.gh.miniasp.com/">
+<meta name="author" content="Will 保哥 (Will Huang)">
 <meta name="theme-color" content="#0a0a0b">
+<link rel="canonical" href="https://gwt.gh.miniasp.com/">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="gwt">
+<meta property="og:locale" content="zh_TW">
+<meta property="og:url" content="https://gwt.gh.miniasp.com/">
+<meta property="og:image" content="https://gwt.gh.miniasp.com/assets/og.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="gwt：git worktree 的互動式切換指令，以及終端機裡的 worktree 選單畫面">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@Will_Huang">
+<meta name="twitter:creator" content="@Will_Huang">
+<meta name="twitter:image" content="https://gwt.gh.miniasp.com/assets/og.png">
+<meta name="twitter:image:alt" content="gwt：git worktree 的互動式切換指令，以及終端機裡的 worktree 選單畫面">
+
+<link rel="icon" href="/favicon.ico" sizes="32x32">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/assets/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "gwt",
+  "alternateName": "git-worktree-tui",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "macOS, Linux",
+  "description": "在終端機列出所有 Git worktree，用方向鍵或 j、k 選好，按 Enter 直接切換目錄的 zsh 函式。只依賴 zsh 與 git。",
+  "url": "https://gwt.gh.miniasp.com/",
+  "codeRepository": "https://github.com/doggy8088/git-worktree-tui",
+  "license": "https://github.com/doggy8088/git-worktree-tui/blob/main/LICENSE",
+  "inLanguage": "zh-Hant-TW",
+  "isAccessibleForFree": true,
+  "author": {
+    "@type": "Person",
+    "name": "Will 保哥 (Will Huang)",
+    "url": "https://blog.miniasp.com/",
+    "sameAs": [
+      "https://github.com/doggy8088",
+      "https://x.com/Will_Huang",
+      "https://www.youtube.com/@Will_Huang"
+    ]
+  }
+}
+</script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;700&display=swap" rel="stylesheet">
@@ -35,8 +85,8 @@
     <div class="hero-card">
       <div class="hero-say">
         <div class="band" aria-hidden="true"></div>
-        <h1 id="hero-title">git worktree 的<br>互動式切換指令</h1>
-        <p class="lead">在終端機列出所有 worktree，用方向鍵選好，按 Enter 就切過去。</p>
+        <h1 id="hero-title"><span class="hero-line">git worktree</span><span class="hero-line">互動式切換指令</span></h1>
+        <p class="lead">在終端機列出所有 worktree，用方向鍵<span class="nb">選好</span>，按 Enter 就切過去。</p>
         <div class="install-block">
           <p class="install-name">安裝</p>
           <pre class="install-code"><code>git clone https://github.com/doggy8088/git-worktree-tui.git
@@ -81,7 +131,7 @@ cd git-worktree-tui &amp;&amp; bash install.sh</code></pre>
 <span class="line"><span class="dir">~/projects/shop-feature-search-api</span></span>
 <span class="line"><span class="prompt">&gt;</span> <span class="caret" aria-hidden="true"></span></span></code></pre>
       </div>
-      <p class="stage-note">這是執行時的畫面：欄寬、光棒、分支顏色都和終端機裡一樣。</p>
+      <p class="stage-note">這是執行時的畫面：欄寬、光棒、顏色都和終端機一樣。</p>
     </div>
   </section>
 
@@ -331,7 +381,11 @@ detached</code></pre>
     </div>
   </div>
   <div class="foot-end">
-    <p>MIT 授權，著作權人 Will 保哥 (Will Huang)。</p>
+    <p>
+      © 2026 <a href="https://blog.miniasp.com/">Will 保哥 (Will Huang)</a> ·
+      <a href="https://github.com/doggy8088/git-worktree-tui/blob/main/LICENSE">MIT 授權</a> ·
+      原始碼與示範內容取自 <a href="https://github.com/doggy8088/git-worktree-tui">git-worktree-tui</a>
+    </p>
     <a class="btn btn-tiny" href="https://github.com/doggy8088/git-worktree-tui">在 GitHub 上看</a>
   </div>
 </footer>

@@ -12,7 +12,7 @@ TEST_FILES := tests/run.sh tests/lib/assert.zsh tests/lib/fixture.zsh \
 
 .DEFAULT_GOAL := help
 
-.PHONY: help test lint install uninstall demo clean
+.PHONY: help test lint install uninstall site demo clean
 
 help:  ## 顯示可用指令
 	@echo "可用指令："
@@ -33,6 +33,9 @@ install:  ## 安裝到 ~/.zsh/gwt.zsh 並在 ~/.zshrc 加入 source
 
 uninstall:  ## 移除安裝
 	@bash install.sh --uninstall
+
+site:  ## 在本機預覽網站（http://localhost:8765）
+	@cd site && python3 -m http.server 8765
 
 demo:  ## 建立一個示範用的多 worktree 儲存庫
 	@bash scripts/demo.sh
