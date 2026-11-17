@@ -1,6 +1,27 @@
 # 版本記錄
 
-格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版本號參考 [Semantic Versioning](https://semver.org/lang/zh-TW/)。
+格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版本號參考 [Semantic Versioning](https://semver.org/zh-TW/)。
+
+## [未發布]
+
+### 新增
+
+- 選單內按 `/` 進入模糊搜尋：以子序列比對分支名稱與路徑的最後一層目錄，
+  `flogin` 可以找到 `feature/login`。查詢含空白時切成多個詞，每個詞都要命中（AND）。
+- 搜尋結果依相關度排序（連續命中、字首與分隔符後命中優先），同分時維持 Git 的順序。
+- 搜尋模式支援 `Backspace`、`Ctrl+U`（清空）、`Ctrl+W`（刪除最後一個詞）；
+  沒有符合項目時顯示提示，按 `Enter` 不會誤切換。
+- 測試：新增 1 個模糊搜尋單元測試與 8 個 PTY 互動測試，總數 34 個。
+
+### 變更
+
+- 表頭改為每次重繪時一起更新，才能即時顯示搜尋字串與符合筆數。
+- 選單按鍵說明加入 `/` 搜尋；`--help` 同步補充搜尋模式的按鍵。
+
+### 修正
+
+- 按 `Esc` 後緊接 `Enter` 時，`Enter` 會被當成跳脫序列的一部分吃掉。改為逐字元
+  解析 Esc 序列，非方向鍵的字元會放回主迴圈處理。
 
 ## [0.1.0] - 2026-11-17
 

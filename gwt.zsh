@@ -49,7 +49,9 @@ _gwt_load_msgs() {
       _GWT_M[bad_opt]='gwt: unknown option: %s'
       _GWT_M[mark]='(current)'
       _GWT_M[detached]='detached'
-      _GWT_M[header]='Select a worktree (↑/↓ move, Enter confirm, 1-%d jump, q/Esc cancel):'
+      _GWT_M[header]='Select a worktree (↑/↓ move, Enter confirm, / search, 1-%d jump, q/Esc cancel):'
+      _GWT_M[search]='Search: %s▏  %d match(es) (↑/↓ move, Enter confirm, Esc clear):'
+      _GWT_M[search_none]='No worktree matches this search.'
       _GWT_M[range]='showing %d-%d of %d'
       _GWT_HELP='Usage: gwt [options] [keyword]
 
@@ -64,8 +66,13 @@ Options:
 Keys:
   ↑/↓, k/j       move up and down (wraps around)
   1-9            jump to that number and switch immediately
+  /              fuzzy search branch names and the last path component
   Enter          switch to the highlighted worktree
   q, Esc         cancel
+
+While searching, ↑/↓ still move, Enter still confirms, and Esc clears the
+search instead of cancelling the menu. Backspace edits the query, Ctrl+U
+clears it, and Ctrl+W deletes the last word.
 
 Keyword: matched against "path + branch". When exactly one worktree matches,
          gwt switches to it directly without showing the menu.
@@ -88,7 +95,9 @@ Environment:
       _GWT_M[bad_opt]='gwt: 未知的選項：%s'
       _GWT_M[mark]='(目前位置)'
       _GWT_M[detached]='detached'
-      _GWT_M[header]='請選擇 Worktree (↑/↓ 移動, Enter 確認, 按 1-%d 直接跳轉, q/Esc 取消)：'
+      _GWT_M[header]='請選擇 Worktree (↑/↓ 移動, Enter 確認, / 搜尋, 按 1-%d 直接跳轉, q/Esc 取消)：'
+      _GWT_M[search]='搜尋：%s▏  %d 筆符合 (↑/↓ 移動, Enter 確認, Esc 清除搜尋)：'
+      _GWT_M[search_none]='沒有符合搜尋條件的 worktree。'
       _GWT_M[range]='顯示 %d-%d，共 %d 筆'
       _GWT_HELP='用法：gwt [選項] [關鍵字]
 
@@ -103,8 +112,12 @@ Environment:
 按鍵：
   ↑/↓, k/j       上下移動（到頭尾會循環）
   1-9            直接跳到該編號並切換，不需要按 Enter
+  /              模糊搜尋分支名稱與目錄名稱（只比對路徑的最後一層）
   Enter          切換到反白的 worktree
   q, Esc         取消
+
+搜尋模式中 ↑/↓ 仍可移動、Enter 仍可確認，Esc 改為清除搜尋（不會直接取消
+選單）。Backspace 刪除一個字元，Ctrl+U 清空，Ctrl+W 刪除最後一個詞。
 
 關鍵字：比對「路徑 + 分支名稱」整串文字。
         只有一筆符合時，不顯示選單，直接切換過去。
@@ -127,9 +140,12 @@ Environment:
 # 狀態
 # -----------------------------------------------------------------------------
 typeset -ga _GWT_PATHS _GWT_BRANCHES _GWT_HEADS
+# 完整候選清單（已套用命令列關鍵字），互動搜尋時從這裡重新篩選
+typeset -ga _GWT_ALL_PATHS _GWT_ALL_BRANCHES _GWT_ALL_HEADS
 typeset -gi _GWT_COUNT=0 _GWT_SELECTED=0 _GWT_DRAWN=0 _GWT_WIDTH=80 _GWT_SW=0
 typeset -gi _GWT_HEIGHT=24 _GWT_VISIBLE=0 _GWT_TOP=1 _GWT_SCROLLED=0
-typeset -g  _GWT_CURRENT='' _GWT_PENDING_KEY=''
+typeset -gi _GWT_SEARCH=0
+typeset -g  _GWT_CURRENT='' _GWT_PENDING_KEY='' _GWT_QUERY='' _GWT_ESC_KIND=''
 typeset -gi _GWT_INTERRUPTED=0
 typeset -g  _GWT_S_RESET='' _GWT_S_BAR='' _GWT_S_BRANCH='' _GWT_S_MARK='' _GWT_S_DIM=''
 
@@ -137,6 +153,9 @@ _gwt_reset_state() {
   _GWT_PATHS=()
   _GWT_BRANCHES=()
   _GWT_HEADS=()
+  _GWT_ALL_PATHS=()
+  _GWT_ALL_BRANCHES=()
+  _GWT_ALL_HEADS=()
   _GWT_COUNT=0
   _GWT_SELECTED=0
   _GWT_DRAWN=0
@@ -144,8 +163,11 @@ _gwt_reset_state() {
   _GWT_VISIBLE=0
   _GWT_TOP=1
   _GWT_SCROLLED=0
+  _GWT_SEARCH=0
   _GWT_CURRENT=''
   _GWT_PENDING_KEY=''
+  _GWT_QUERY=''
+  _GWT_ESC_KIND=''
   _GWT_INTERRUPTED=0
 }
 
@@ -342,6 +364,183 @@ _gwt_collect_one() {
 }
 
 # -----------------------------------------------------------------------------
+# 模糊搜尋
+# -----------------------------------------------------------------------------
+# 互動搜尋只比對「分支名稱」與「路徑的最後一層目錄」，不比對完整路徑，
+# 避免 /Users/... 這種共同前綴讓每一筆都符合。
+#
+# 比對方式是子序列（subsequence）：查詢字元依序出現在候選字串裡就算符合，
+# 所以 "flogin" 可以找到 feature/login。分數用來排序，規則大致是：
+#   - 連續命中的加成最高（越長越好）
+#   - 命中在字首或分隔符（/ - _ . 空白）之後額外加分
+#   - 跳過太多字元要扣分，候選字串越長也會被小幅扣分
+
+# 單一詞彙比對。符合時 REPLY 放分數並回傳 0，不符合回傳 1。
+_gwt_fuzzy_term() {
+  local hay=$1 term=$2
+  if (( ${GWT_FILTER_CASE_INSENSITIVE:-1} )); then
+    hay=${(L)hay}
+    term=${(L)term}
+  fi
+
+  local -i hl=${#hay} tl=${#term}
+  REPLY=0
+  (( tl == 0 )) && return 0
+
+  local -i hi=1 ti=1 score=0 last=0 run=0 skipped=0
+  local ch prev
+  while (( ti <= tl )); do
+    ch=${term[ti]}
+    while (( hi <= hl )) && [[ ${hay[hi]} != "$ch" ]]; do
+      (( hi++ ))
+    done
+    if (( hi > hl )); then
+      REPLY=0
+      return 1
+    fi
+
+    (( score += 10 ))
+    if (( last > 0 )); then
+      if (( hi == last + 1 )); then
+        (( run++ ))
+        (( score += 6 + run * 2 ))
+      else
+        (( run = 0 ))
+        (( skipped = hi - last - 1 ))
+        # 中間跳過的字元越多越不像，但最多只扣 4 分，避免長名稱永遠排最後
+        (( score -= skipped > 4 ? 4 : skipped ))
+      fi
+    fi
+
+    if (( hi == 1 )); then
+      (( score += 14 ))
+    else
+      prev=${hay[hi-1]}
+      case $prev in
+        '/'|'-'|'_'|'.'|' ') (( score += 10 )) ;;
+      esac
+    fi
+
+    last=$hi
+    (( hi++ ))
+    (( ti++ ))
+  done
+
+  # 候選字串越長，同樣的命中越不精確
+  (( score -= hl / 5 ))
+  REPLY=$score
+  return 0
+}
+
+# 整串查詢比對：以空白切成多個詞，每個詞都必須命中分支或目錄名稱（AND）。
+# 符合時 REPLY 放總分並回傳 0。
+_gwt_fuzzy_match() {
+  local branch=$1 base=$2 query=$3
+  local -a terms=()
+  local t
+  for t in "${(@s: :)query}"; do
+    [[ -n $t ]] && terms+=("$t")
+  done
+  if (( ${#terms} == 0 )); then
+    REPLY=0
+    return 0
+  fi
+
+  local -i total=0 sb=0 sa=0 rb=0 ra=0
+  local term
+  for term in "${terms[@]}"; do
+    _gwt_fuzzy_term "$branch" "$term"
+    rb=$?
+    sb=$REPLY
+    _gwt_fuzzy_term "$base" "$term"
+    ra=$?
+    sa=$REPLY
+
+    if (( rb != 0 && ra != 0 )); then
+      REPLY=0
+      return 1
+    fi
+    if (( rb == 0 && ( ra != 0 || sb >= sa ) )); then
+      (( total += sb ))
+    else
+      (( total += sa ))
+    fi
+  done
+
+  REPLY=$total
+  return 0
+}
+
+# 記住命令列關鍵字篩選後的完整清單，互動搜尋才不會愈搜愈少。
+_gwt_snapshot() {
+  _GWT_ALL_PATHS=("${(@)_GWT_PATHS}")
+  _GWT_ALL_BRANCHES=("${(@)_GWT_BRANCHES}")
+  _GWT_ALL_HEADS=("${(@)_GWT_HEADS}")
+}
+
+# 依 _GWT_QUERY 重新產生目前顯示的清單，並依分數排序（同分維持 Git 的順序）。
+_gwt_refilter() {
+  local -i i n=${#_GWT_ALL_PATHS} score
+  local base key
+  local -a ranked=()
+
+  _GWT_PATHS=()
+  _GWT_BRANCHES=()
+  _GWT_HEADS=()
+  _GWT_COUNT=0
+
+  if [[ -z ${_GWT_QUERY// /} ]]; then
+    _GWT_PATHS=("${(@)_GWT_ALL_PATHS}")
+    _GWT_BRANCHES=("${(@)_GWT_ALL_BRANCHES}")
+    _GWT_HEADS=("${(@)_GWT_ALL_HEADS}")
+    _GWT_COUNT=$n
+    return 0
+  fi
+
+  for (( i = 1; i <= n; i++ )); do
+    base=${_GWT_ALL_PATHS[i]:t}
+    _gwt_fuzzy_match "${_GWT_ALL_BRANCHES[i]}" "$base" "$_GWT_QUERY" || continue
+    score=$REPLY
+    (( score < 0 )) && score=0
+    # 固定寬度排序鍵：分數遞減、原始順序遞增（(O) 是字串遞減排序）
+    printf -v key '%06d:%06d:%d' $(( score + 1 )) $(( 1000000 - i )) "$i"
+    ranked+=("$key")
+  done
+
+  for key in "${(@O)ranked}"; do
+    i=${key##*:}
+    _GWT_PATHS+=("${_GWT_ALL_PATHS[i]}")
+    _GWT_BRANCHES+=("${_GWT_ALL_BRANCHES[i]}")
+    _GWT_HEADS+=("${_GWT_ALL_HEADS[i]}")
+    (( _GWT_COUNT++ ))
+  done
+}
+
+# 查詢改變後重設游標：永遠從最佳的那一筆開始。
+_gwt_search_apply() {
+  _gwt_refilter
+  if (( _GWT_COUNT > 0 )); then
+    _GWT_SELECTED=1
+  else
+    _GWT_SELECTED=0
+  fi
+  _GWT_TOP=1
+}
+
+# 離開搜尋模式，恢復完整清單（ESC 在搜尋模式裡做這件事，不是取消選單）。
+_gwt_search_exit() {
+  _GWT_SEARCH=0
+  _GWT_QUERY=''
+  _gwt_refilter
+  if (( _GWT_COUNT > 0 )); then
+    _GWT_SELECTED=1
+  else
+    _GWT_SELECTED=0
+  fi
+  _GWT_TOP=1
+}
+
+# -----------------------------------------------------------------------------
 # 畫面
 # -----------------------------------------------------------------------------
 # 產生第 i 列的文字，結果放在 REPLY。
@@ -400,8 +599,32 @@ _gwt_format_row() {
   fi
 }
 
+_gwt_header() {
+  local text=''
+  if (( _GWT_SEARCH )); then
+    printf -v text "${_GWT_M[search]}" "$_GWT_QUERY" "$_GWT_COUNT"
+  else
+    printf -v text "${_GWT_M[header]}" "$_GWT_COUNT"
+  fi
+  _gwt_clip_middle "$text" "$_GWT_WIDTH"
+}
+
+# 表頭只佔一列，而且每次重畫都要先清掉整列，避免搜尋字串變短時留下殘影。
+_gwt_draw_header() {
+  _gwt_header
+  printf '\r\e[2K%s\n' "$REPLY"
+}
+
 _gwt_draw() {
   _gwt_layout
+
+  if (( _GWT_COUNT == 0 )); then
+    _gwt_clip_middle "${_GWT_M[search_none]}" "$_GWT_WIDTH"
+    printf '\r\e[2K%s%s%s\n' "$_GWT_S_DIM" "$REPLY" "$_GWT_S_RESET"
+    _GWT_DRAWN=1
+    return 0
+  fi
+
   local -i i last=$(( _GWT_TOP + _GWT_VISIBLE - 1 ))
   (( last > _GWT_COUNT )) && last=$_GWT_COUNT
 
@@ -421,6 +644,16 @@ _gwt_draw() {
   fi
 }
 
+# 回到表頭那一列，重畫表頭與清單。表頭會隨搜尋字串改變，所以不能只畫清單。
+# 這裡一定要先 \e[J 清到畫面結尾：搜尋讓清單變短時，舊的列還在游標下方，
+# 只畫新的列會留下殘影，看起來就像清單沒有跟著篩選。
+_gwt_repaint() {
+  _gwt_layout
+  printf '\e[%dA\e[J' "$(( _GWT_DRAWN + 1 ))"
+  _gwt_draw_header
+  _gwt_draw
+}
+
 # 收尾：移除 trap、視需要擦掉選單、把游標還給使用者。
 # 不論是 Enter、數字鍵、q/Esc、Ctrl+C 或讀不到輸入，都必須經過這裡。
 _gwt_finish() {
@@ -433,6 +666,7 @@ _gwt_finish() {
 
 _gwt_shift() {
   local -i d=$1
+  (( _GWT_COUNT == 0 )) && return 0
   _GWT_SELECTED=$(( _GWT_SELECTED + d ))
   if (( _GWT_SELECTED > _GWT_COUNT )); then
     _GWT_SELECTED=1
@@ -464,9 +698,37 @@ _gwt_pick_number() {
   _GWT_SELECTED=$(( 10#$digits ))
 }
 
+# 讀取 Esc 之後的序列，結果分類放在 _GWT_ESC_KIND：
+#   up / down / escape（單獨一個 Esc） / other（無法辨識的序列）
+# 這裡刻意逐字元讀，而不是 read -k 2：使用者按 Esc 之後若馬上按 Enter，
+# read -k 2 會把 Enter 一起吃掉。現在會把它放回 _GWT_PENDING_KEY。
+_gwt_read_escape() {
+  local one='' two=''
+  _GWT_ESC_KIND='other'
+  if ! read -r -k 1 -s -t "${GWT_ESC_TIMEOUT:-0.05}" one; then
+    _GWT_ESC_KIND='escape'
+    return 0
+  fi
+  case $one in
+    '['|'O')
+      if read -r -k 1 -s -t "${GWT_ESC_TIMEOUT:-0.05}" two; then
+        case $two in
+          A) _GWT_ESC_KIND='up' ;;
+          B) _GWT_ESC_KIND='down' ;;
+          *) _GWT_ESC_KIND='other' ;;
+        esac
+      fi
+      ;;
+    *)
+      _GWT_PENDING_KEY=$one
+      _GWT_ESC_KIND='escape'
+      ;;
+  esac
+}
+
 # 互動式選單。成功選定時回傳 0，取消或中斷時回傳非 0。
 _gwt_pick() {
-  local key='' rest=''
+  local key=''
   _GWT_SELECTED=1
   _GWT_PENDING_KEY=''
   _gwt_init_size
@@ -479,12 +741,7 @@ _gwt_pick() {
   printf '\e[?25l'
   trap '_GWT_INTERRUPTED=1; _gwt_finish; return 130' INT TERM
 
-  # 表頭也要裁到一行以內，否則終端機自動折行會讓行數計算失準
-  local header=''
-  printf -v header "${_GWT_M[header]}" "$_GWT_COUNT"
-  _gwt_clip_middle "$header" "$_GWT_WIDTH"
-  printf '%s\n' "$REPLY"
-
+  _gwt_draw_header
   _gwt_draw
 
   while true; do
@@ -496,47 +753,103 @@ _gwt_pick() {
       return 1
     fi
 
-    case $key in
-      $'\e')
-        rest=''
-        read -r -k 2 -s -t "${GWT_ESC_TIMEOUT:-0.05}" rest
-        case $rest in
-          '[A'|'OA') _gwt_shift -1 ;;
-          '[B'|'OB') _gwt_shift 1 ;;
-          '')        _gwt_finish; return 1 ;;   # 單獨一個 Esc = 取消
-          *)         ;;                         # 其他跳脫序列：忽略
-        esac
-        ;;
-      $'\x03')                                 # Ctrl+C（未轉成 SIGINT 時）
-        _GWT_INTERRUPTED=1
-        _gwt_finish
-        return 130
-        ;;
-      k|K) _gwt_shift -1 ;;
-      j|J) _gwt_shift 1 ;;
-      $'\n'|$'\r')
-        _gwt_finish
-        return 0
-        ;;
-      [1-9])
-        _gwt_pick_number "$key"
-        if (( _GWT_SELECTED >= 1 && _GWT_SELECTED <= _GWT_COUNT )); then
-          # 先重畫一次，讓使用者看到最後落在哪一筆
-          printf '\e[%dA' "$_GWT_DRAWN"
-          _gwt_draw
+    if (( _GWT_SEARCH )); then
+      # 搜尋模式：可列印字元都算查詢內容，所以 q、j、k、數字都不再有特殊意義。
+      case $key in
+        $'\e')
+          _gwt_read_escape
+          case $_GWT_ESC_KIND in
+            up)     _gwt_shift -1 ;;
+            down)   _gwt_shift 1 ;;
+            escape) _gwt_search_exit ;;   # 搜尋中的 Esc 只清掉搜尋
+          esac
+          ;;
+        $'\x03')                             # Ctrl+C
+          _GWT_INTERRUPTED=1
+          _gwt_finish
+          return 130
+          ;;
+        $'\n'|$'\r')
+          if (( _GWT_COUNT > 0 )); then
+            _gwt_finish
+            return 0
+          fi
+          ;;
+        $'\x7f'|$'\x08')                     # Backspace / Delete
+          if [[ -n $_GWT_QUERY ]]; then
+            _GWT_QUERY=${_GWT_QUERY%?}
+            _gwt_search_apply
+          fi
+          ;;
+        $'\x15')                             # Ctrl+U：清空查詢
+          if [[ -n $_GWT_QUERY ]]; then
+            _GWT_QUERY=''
+            _gwt_search_apply
+          fi
+          ;;
+        $'\x17')                             # Ctrl+W：刪除最後一個詞
+          if [[ -n $_GWT_QUERY ]]; then
+            local q=${_GWT_QUERY% }
+            if [[ $q == *' '* ]]; then
+              _GWT_QUERY=${q% *}
+            else
+              _GWT_QUERY=''
+            fi
+            _gwt_search_apply
+          fi
+          ;;
+        [$'\x01'-$'\x1f'])
+          ;;                                 # 其他控制鍵：忽略
+        *)
+          _GWT_QUERY+=$key
+          _gwt_search_apply
+          ;;
+      esac
+    else
+      case $key in
+        /)                                   # 進入模糊搜尋
+          _GWT_SEARCH=1
+          _GWT_QUERY=''
+          _gwt_search_apply
+          ;;
+        $'\e')
+          _gwt_read_escape
+          case $_GWT_ESC_KIND in
+            up)     _gwt_shift -1 ;;
+            down)   _gwt_shift 1 ;;
+            escape) _gwt_finish; return 1 ;;   # 單獨一個 Esc = 取消
+          esac
+          ;;
+        $'\x03')                                 # Ctrl+C（未轉成 SIGINT 時）
+          _GWT_INTERRUPTED=1
+          _gwt_finish
+          return 130
+          ;;
+        k|K) _gwt_shift -1 ;;
+        j|J) _gwt_shift 1 ;;
+        $'\n'|$'\r')
           _gwt_finish
           return 0
-        fi
-        ;;
-      q|Q)
-        _gwt_finish
-        return 1
-        ;;
-    esac
+          ;;
+        [1-9])
+          _gwt_pick_number "$key"
+          if (( _GWT_SELECTED >= 1 && _GWT_SELECTED <= _GWT_COUNT )); then
+            # 先重畫一次，讓使用者看到最後落在哪一筆
+            printf '\e[%dA' "$_GWT_DRAWN"
+            _gwt_draw
+            _gwt_finish
+            return 0
+          fi
+          ;;
+        q|Q)
+          _gwt_finish
+          return 1
+          ;;
+      esac
+    fi
 
-    # 回到這一塊的第一列重畫
-    printf '\e[%dA' "$_GWT_DRAWN"
-    _gwt_draw
+    # 回到這一塊的第一列重畫（表頭也可能因為搜尋字串而改變）
+    _gwt_repaint
   done
 }
 
@@ -583,6 +896,8 @@ gwt() {
   # 用 process substitution 讀 porcelain，最後補一個換行，
   # 確保最後一組資料一定以空行結尾而被收進陣列。
   _gwt_collect "$keyword" < <(git worktree list --porcelain 2>/dev/null; printf '\n')
+  # 互動搜尋從完整清單重新篩選；命令列關鍵字已經是第一層篩選。
+  _gwt_snapshot
 
   if (( _GWT_COUNT == 0 )); then
     if [[ -n $keyword ]]; then
