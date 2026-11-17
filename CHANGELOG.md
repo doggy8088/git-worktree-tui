@@ -39,4 +39,4 @@
 - `_GWT_COUNT` 原本只在 `gwt` 內設定，單獨呼叫 `_gwt_collect` 時不會更新。
 - `Makefile` 的 `ZSH` 變數與 oh-my-zsh 的 `$ZSH`（安裝目錄）衝突，導致 `make lint` 失敗；改名為 `ZSHBIN`。
 
-[1.0.0]: https://github.com/doggy8088/git-worktree-tui/releases/tag/v1.0.0
+[1.0.0]: https://github.com/doggy8088/git-worktree-tui/releases

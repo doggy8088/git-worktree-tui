@@ -7,6 +7,10 @@
 *.swp
 *~
 
+# Python（PTY 驅動程式的編譯產物）
+__pycache__/
+*.pyc
+
 # 測試與暫存產物
 /tmp/
 .gwt-test-out/
