@@ -625,10 +625,57 @@ kbd {
 
 .porcelain-note { margin-top: 14px; font-size: var(--t-small); color: var(--muted); max-width: 44ch; }
 
+/* --- 光軌帶：一條分岔成多條 ------------------------------------------------ */
+
+.branch-band {
+  padding: clamp(68px, 8vw, 120px) 0 0;
+}
+
+.band-head {
+  padding: 0 var(--frame);
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: var(--gap) clamp(24px, 4vw, 56px);
+  align-items: end;
+  margin-bottom: clamp(26px, 3vw, 44px);
+}
+
+.band-head h2 {
+  font-size: var(--t-head);
+  font-weight: 700;
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+  word-break: keep-all;
+}
+
+.band-say {
+  font-size: var(--t-body);
+  max-width: 34ch;
+  padding-bottom: 6px;
+}
+
+.band-figure { margin: 0; }
+
+.band-figure img {
+  display: block;
+  width: 100%;
+  height: clamp(220px, 38svh, 420px);
+  object-fit: cover;
+  /* 圖片的黑是純黑，頁面底色是 #0a0a0b；用 lighten 讓黑直接融入底色 */
+  mix-blend-mode: lighten;
+}
+
+.band-figure figcaption {
+  padding: 14px var(--frame) 0;
+  font-size: var(--t-small);
+  color: var(--muted);
+}
+
 /* --- 數字（反白的一段） --------------------------------------------------- */
 
 .figures {
-  background: var(--paper);
+  position: relative;
+  background-color: var(--paper);
   color: var(--paper-ink);
   padding: clamp(64px, 7vw, 110px) var(--frame);
   display: grid;
@@ -636,6 +683,18 @@ kbd {
   gap: 8px;
   align-items: start;
 }
+
+.figures::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("paper-fibre.jpg") center / cover no-repeat;
+  opacity: 0.16;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+
+.figures > * { position: relative; z-index: 1; }
 
 .figures-head { grid-column: 7 / 13; grid-row: 1; margin-bottom: clamp(24px, 3vw, 40px); }
 
@@ -668,7 +727,7 @@ kbd {
   color: var(--accent-ink);
   min-height: clamp(300px, 38vw, 440px);
 }
-.tile-paper { grid-column: 7 / 10; grid-row: 2; background: #d8d8d3; }
+.tile-paper { grid-column: 7 / 10; grid-row: 2; background: #d3d3cd; }
 .tile-ink { grid-column: 10 / 13; grid-row: 2; background: var(--paper-ink); color: var(--paper); margin-top: 10vh; }
 
 .tile-num {
@@ -813,7 +872,10 @@ kbd {
   font-weight: 700;
   color: var(--accent);
 }
-.tile-side-b { grid-column: 11 / 13; background: var(--surface-2); }
+.tile-side-b {
+  grid-column: 11 / 13;
+  background: var(--surface-2) url("filament-detail.jpg") center / cover no-repeat;
+}
 
 /* --- 頁尾 ----------------------------------------------------------------- */
 
@@ -906,6 +968,10 @@ kbd {
   .keys { grid-template-columns: minmax(0, 1fr); }
   .keys-title { grid-column: 1; }
   .keys-body { grid-column: 1; margin-top: 28px; }
+
+  .band-head { grid-template-columns: minmax(0, 1fr); align-items: start; }
+  .band-say { padding-bottom: 0; }
+  .band-figure img { height: clamp(180px, 30svh, 260px); }
 
   .figures { grid-template-columns: minmax(0, 1fr); }
   .figures-head { grid-column: 1; grid-row: auto; }
