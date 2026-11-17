@@ -3,6 +3,8 @@
 [![CI](https://github.com/doggy8088/git-worktree-tui/actions/workflows/ci.yml/badge.svg)](https://github.com/doggy8088/git-worktree-tui/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+網站：<https://gwt.gh.miniasp.com>（示範選單可以直接用鍵盤操作）
+
 用 zsh 寫的 Git Worktree 互動式切換工具：一個指令列出所有 worktree，用方向鍵、`j`／`k` 或數字鍵選好，按下 Enter 就直接 `cd` 過去。
 
 ```
