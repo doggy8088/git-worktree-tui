@@ -24,6 +24,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: 把安裝腳本放進網站（one-line install 用）
+        run: cp install.sh site/install.sh
+
       - name: 設定 Pages
         uses: actions/configure-pages@v5
 

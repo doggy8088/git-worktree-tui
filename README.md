@@ -33,13 +33,25 @@ Worktree 一多，真正花時間的從來不是 Git 指令，而是「`git work
 
 ## 安裝
 
-### 方式一：安裝腳本（推薦）
+### 方式一：一行安裝（推薦）
 
 ```sh
-git clone https://github.com/doggy8088/git-worktree-tui.git
-cd git-worktree-tui
-bash install.sh
+curl -fsSL https://gwt.gh.miniasp.com/install.sh | bash
 ```
+
+要固定版本（例如發過 release 之後）：
+
+```sh
+curl -fsSL https://gwt.gh.miniasp.com/install.sh | bash -s -- --version v0.1.0
+```
+
+腳本會把 `gwt.zsh` 放到 `~/.zsh/gwt.zsh`，並在 `~/.zshrc` 加入載入設定。移除時：
+
+```sh
+curl -fsSL https://gwt.gh.miniasp.com/install.sh | bash -s -- --uninstall
+```
+
+在 clone 下來的專案裡也可以直接 `bash install.sh`（會用本地檔案，不連網）。
 
 腳本會把 `gwt.zsh` 複製到 `~/.zsh/gwt.zsh`，並在 `~/.zshrc` 加入：
 

@@ -89,13 +89,12 @@
         <p class="lead">在終端機列出所有 worktree，用方向鍵<span class="nb">選好</span>，按 Enter 就切過去。</p>
         <div class="install-block">
           <p class="install-name">安裝</p>
-          <pre class="install-code"><code>git clone https://github.com/doggy8088/git-worktree-tui.git
-cd git-worktree-tui &amp;&amp; bash install.sh</code></pre>
+          <pre class="install-code"><code>curl -fsSL https://gwt.gh.miniasp.com/install.sh | bash</code></pre>
         </div>
       </div>
       <div class="hero-foot">
         <div class="actions">
-          <button class="btn" type="button" data-copy="git clone https://github.com/doggy8088/git-worktree-tui.git &amp;&amp; cd git-worktree-tui &amp;&amp; bash install.sh">複製安裝指令</button>
+          <button class="btn" type="button" data-copy="curl -fsSL https://gwt.gh.miniasp.com/install.sh | bash">複製安裝指令</button>
           <a class="btn btn-quiet" href="#how">看它怎麼動</a>
         </div>
         <p class="copy-state" role="status" data-copy-state></p>
@@ -328,7 +327,7 @@ detached</code></pre>
           <span class="q">之後怎麼更新？</span>
         </button>
         <div class="card-body" id="a6" role="region" aria-labelledby="q6" hidden>
-          <p>在專案目錄執行 <code>git pull</code> 就是新版；<code>.zshrc</code> 只有一行 source，不必再改。想固定版本就執行 <code>make install</code>，它會把函式庫複製到 <code>~/.zsh/gwt.zsh</code>。</p>
+          <p>再跑一次安裝腳本就是最新版——它會抓最新的 release，換掉 <code>~/.zsh/gwt.zsh</code>，<code>.zshrc</code> 不必再動。要固定版本就在指令後面加 <code>--version v0.1.0</code>。</p>
         </div>
       </article>
 
@@ -339,10 +338,10 @@ detached</code></pre>
     <div class="tile-side tile-side-a" aria-hidden="true"><span class="chev">&gt;</span></div>
     <div class="tile-main">
       <h2 id="close-title">先裝起來<br>再回來看</h2>
-      <p class="close-say">兩行指令，之後在任何儲存庫裡打 gwt。</p>
+      <p class="close-say">一行指令，之後在任何儲存庫裡打 gwt。</p>
       <div class="install">
-        <code class="install-cmd">git clone https://github.com/doggy8088/git-worktree-tui.git &amp;&amp; cd git-worktree-tui &amp;&amp; bash install.sh</code>
-        <button class="btn btn-dark" type="button" data-copy="git clone https://github.com/doggy8088/git-worktree-tui.git &amp;&amp; cd git-worktree-tui &amp;&amp; bash install.sh">複製</button>
+        <code class="install-cmd">curl -fsSL https://gwt.gh.miniasp.com/install.sh | bash</code>
+        <button class="btn btn-dark" type="button" data-copy="curl -fsSL https://gwt.gh.miniasp.com/install.sh | bash">複製</button>
       </div>
       <p class="copy-state" role="status" data-copy-state></p>
     </div>
