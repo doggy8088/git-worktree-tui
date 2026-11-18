@@ -82,7 +82,18 @@ function Get-Env { param($Sb, [string]$Latest) @{ GWT_RAW_BASE = "$base/raw"; GW
 try {
   # --- irm | iex：最新 release 還沒有 PowerShell 版 → 明說並改裝 main -----------------------
   $sb = New-Sandbox; Reset-Requests
-  $r = Invoke-Child "irm '$base/install.ps1' | iex; 'CMD=' + (Get-Command gwt -ErrorAction SilentlyContinue).CommandType; 'VER=' + (gwt --version); exit `$LASTEXITCODE" (Get-Env $sb 'latest-without-module')
+  # 在同一個子行程裡：iex 之前先記下目前有哪些函式與變數，iex 之後再比對。不能只在輸出裡找某個名字——
+  # 子行程根本沒去查，輸出裡永遠不會有那個名字，這種斷言不論安裝腳本留下什麼都會通過。
+  # $__ 開頭的是這段檢查自己的暫存變數，比對時略過。比對要在 iex 之後「立刻」做、在呼叫 gwt 之前：
+  # gwt 每次結束都會設 $LASTEXITCODE（文件寫明的行為），先呼叫它就會把那個變數算成安裝腳本留下的。
+  # 結束碼也在 iex 之後立刻存起來，免得被後面的 gwt --version 蓋掉。
+  $probe = "`$__f0 = @(Get-Command -CommandType Function | ForEach-Object Name); `$__v0 = @(Get-Variable | ForEach-Object Name); " +
+  "irm '$base/install.ps1' | iex; `$__rc = `$LASTEXITCODE; " +
+  "'NEWFN=' + ((@(Get-Command -CommandType Function | ForEach-Object Name) | Where-Object { `$__f0 -notcontains `$_ } | Sort-Object) -join ','); " +
+  "'NEWVAR=' + ((@(Get-Variable | ForEach-Object Name) | Where-Object { `$__v0 -notcontains `$_ -and `$_ -notlike '__*' } | Sort-Object) -join ','); " +
+  "'CMD=' + (Get-Command gwt -ErrorAction SilentlyContinue).CommandType; 'VER=' + (gwt --version); " +
+  "exit `$__rc"
+  $r = Invoke-Child $probe (Get-Env $sb 'latest-without-module')
   $asked = @($requests.ToArray())
   Assert-Rc '[iex、最新 release 沒有 PowerShell 版] 結束碼 0' 0 $r.Rc
   Assert-True '[iex、最新 release 沒有 PowerShell 版] 模組裝到 GWT_INSTALL_DIR' (Test-Path -LiteralPath (Join-Path $sb.Dir 'gwt.psm1'))
@@ -91,7 +102,9 @@ try {
   Assert-Rc '[iex、最新 release 沒有 PowerShell 版] block 寫進 GWT_PROFILE' 1 ([regex]::Matches((Get-Content -LiteralPath $sb.Profile -Raw), '>>> gwt')).Count
   Assert-Contains '[iex、最新 release 沒有 PowerShell 版] 裝完立刻載入到目前的工作階段（不必重開）' 'CMD=Function' $r.Output
   Assert-Contains '[iex、最新 release 沒有 PowerShell 版] 載入的 gwt 能跑' 'VER=gwt ' $r.Output
-  Assert-NotContains '[iex] 沒有把 install.ps1 的內部函式留在使用者的工作階段' 'Resolve-UserPath' $r.Output
+  # 失敗時要看得到「多出了哪些」，所以用 Assert-Eq 比對擷取出來的值
+  Assert-Eq '[iex] 使用者的工作階段裡多出來的函式只有 gwt（install.ps1 的 helper 沒有外洩）' 'gwt' ([regex]::Match($r.Output, '(?m)^NEWFN=(.*?)\s*$').Groups[1].Value)
+  Assert-Eq '[iex] 使用者的工作階段裡沒有多出任何變數（參數與內部狀態沒有外洩）' '' ([regex]::Match($r.Output, '(?m)^NEWVAR=(.*?)\s*$').Groups[1].Value)
 
   # --- irm | iex：最新 release 有 PowerShell 版 → 用那個 release，不去抓 main -------------------
   $sb = New-Sandbox; Reset-Requests
