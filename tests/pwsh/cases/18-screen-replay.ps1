@@ -87,6 +87,16 @@ Assert-Eq 'OSC 視窗標題（以 ST 結尾）整段略過' 'x' $r[0]
 $r = Get-Rows "${e}(Bx"
 Assert-Eq '字元集切換 ESC(B 略過' 'x' $r[0]
 
+# --- 自動換行的計數（WRAPS）-------------------------------------------------------------------
+# 只數「寫滿一列還繼續寫」造成的自動換行，明確的 \n 不算
+function Get-Wraps { param([string]$Text, [int]$Rows = 6, [int]$Cols = 5) ([regex]::Match((Get-ScreenReplay -Text $Text -Rows $Rows -Cols $Cols), '(?m)^WRAPS=(\d+)$')).Groups[1].Value }
+Assert-Eq '剛好寫滿一列、沒有再寫：沒有自動換行' '0' (Get-Wraps 'abcde')
+Assert-Eq '寫滿之後再寫一個字：一次自動換行' '1' (Get-Wraps 'abcdef')
+Assert-Eq '寫滿之後接明確的 \n：不算自動換行' '0' (Get-Wraps "abcde`nfgh")
+Assert-Eq '全形字放不下而換行：算一次' '1' (Get-Wraps 'ab中文')
+Assert-Eq '一個字串寫了十二個字在 5 欄：折成三列、兩次自動換行' '2' (Get-Wraps 'abcdefghijkl')
+Assert-Eq 'gwt 的畫法（每列都先 \r、清列、寫、\n）不寬於欄寬：沒有自動換行' '0' (Get-Wraps "`r${e}[2Kabcd`n`r${e}[2Kefgh`n")
+
 # --- 結構摘要（ITEM_ROWS／INDEXES／DUPLICATES／SELECTED）--------------------------------------------
 $summary = Get-ScreenReplay -Text " > [1] aaa`n   [2] bbb`n   [2] dup`n   [4] ddd`n" -Rows 6 -Cols 40
 Assert-Screen '摘要：列數' '^ITEM_ROWS=4$' $summary

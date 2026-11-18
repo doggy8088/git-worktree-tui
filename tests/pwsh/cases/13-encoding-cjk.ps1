@@ -48,6 +48,7 @@ foreach ($cols in 80, 40, 30) {
   $screen = Get-ScreenReplay -Text $r.Raw -Rows 12 -Cols $cols
   Assert-Screen "中文清單在 $cols 欄下仍是 3 列、沒有折行" '^ITEM_ROWS=3$' $screen
   Assert-Screen "中文清單在 $cols 欄下沒有重複的列" '^DUPLICATES=-$' $screen
+  Assert-Screen "中文清單在 $cols 欄下沒有任何一列折行（全形字以兩欄計）" '^WRAPS=0$' $screen
   Assert-Screen "中文清單在 $cols 欄下游標停在第 2 筆" '^SELECTED=2$' $screen
 }
 

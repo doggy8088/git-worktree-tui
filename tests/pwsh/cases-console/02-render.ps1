@@ -64,6 +64,11 @@ foreach ($cols in 25, 50, 60, 80) {
   Assert-Screen "$cols 欄：沒有重複的列" '^DUPLICATES=-$' $r.Screen
   Assert-Screen "$cols 欄：游標在第 2 筆" '^SELECTED=2$' $r.Screen
   Assert-Screen "$cols 欄：確實出現了省略號（測試有效）" '…' $r.Screen
+  # 直接數自動換行。只重播到 gwt 結束為止：之後場景程式自己印的 RESULT-1 那一行（含很長的路徑）
+  # 在窄視窗裡本來就會換行，那不是選單的問題。
+  $cut = $r.Output.IndexOf('RESULT-1', [System.StringComparison]::Ordinal)
+  $menuOnly = Get-ScreenReplay -Text $r.Output.Substring(0, $cut) -Rows 30 -Cols $cols
+  Assert-Screen "$cols 欄：選單本身沒有任何一列被主控台折行（WRAPS=0）" '^WRAPS=0$' $menuOnly
 }
 
 # --- cjk：中文目錄與中文分支
@@ -73,6 +78,9 @@ foreach ($cols in 40, 60, 100) {
   Assert-Screen "cjk $cols 欄：3 筆各佔一列" '^ITEM_ROWS=3$' $r.Screen
   Assert-Screen "cjk $cols 欄：沒有重複的列" '^DUPLICATES=-$' $r.Screen
   Assert-Screen "cjk $cols 欄：游標在第 2 筆" '^SELECTED=2$' $r.Screen
+  $cut = $r.Output.IndexOf('RESULT-1', [System.StringComparison]::Ordinal)
+  $menuOnly = Get-ScreenReplay -Text $r.Output.Substring(0, $cut) -Rows 20 -Cols $cols
+  Assert-Screen "cjk $cols 欄：選單本身沒有任何一列被主控台折行（WRAPS=0）" '^WRAPS=0$' $menuOnly
 }
 $r = Run-Menu 'cjk' @($k.Down, 'q') 20 100
 Assert-Screen '中文分支名稱與路徑正確顯示' '功能/登入|修正/結帳' $r.Screen
