@@ -458,6 +458,153 @@ Backspace、Ctrl+U、多詞、無結果、Enter 恢復與點擊聚焦。
 其他字元放進 `_GWT_PENDING_KEY` 交回主迴圈。`tests/cases-pty/18-search-esc-clears`
 把這個情境固定下來。
 
+## 17. PowerShell 7 版（`gwt.psm1`）
+
+行為、按鍵、設定項、結束碼都與 zsh 版對齊；差別都來自 PowerShell 的執行模型。
+下面每一條都是實測才確認的（pwsh 7.7、Windows 10、主控台字碼頁 950）。
+
+### 17.1 為什麼是模組，而且 `gwt` 是進階函式
+
+跟第 1 節同一個道理：要改變呼叫端的位置，就得在目前的工作階段裡執行，所以是模組不是
+獨立 `.ps1`。模組同時是 `emulate -L zsh` 的對應：helper 與狀態都留在模組作用域，使用者的
+命名空間裡只有 `gwt` 一個名字，使用者的 `$ErrorActionPreference` 之類偏好也不會漏進來。
+
+`gwt` 必須是進階函式（`[CmdletBinding()]`），因為只有它有 `$PSCmdlet`，而取消時要讓
+`gwt && next` 停下來靠的就是 `$PSCmdlet.WriteError`（見 17.2）。代價是 PowerShell 會自己
+處理共同參數，而 `-V`（`--version`）剛好是 `-Verbose` 的縮寫，所以明確宣告了 `-V` 別名。
+`-l`、`-h`、`--list` 這些沒宣告的選項會落進 `ValueFromRemainingArguments`，由 `gwt` 自己解析。
+已知限制：`-d -e -i -o -p -w` 會被 PowerShell 當成共同參數的縮寫，`gwt` 收不到（它沒有這些選項）。
+
+### 17.2 取消要讓 `$?` 變 false，而且什麼都不印
+
+zsh 版取消回傳 1，`gwt && deploy` 因此不會繼續（第 12 節）。PowerShell 的 `&&` 看的是 `$?`，
+不是 `$LASTEXITCODE`。實測哪些寫法能讓呼叫端的 `$?` 變成 false：
+
+| 寫法                                                    | `$?`  | 畫面     |
+| ------------------------------------------------------- | ----- | -------- |
+| 只設 `$global:LASTEXITCODE = 1` 然後 `return`           | true  | —        |
+| `Write-Error -ErrorAction SilentlyContinue`             | true  | 無       |
+| 一般函式包著進階函式，內層 `WriteError`                 | true  | 無       |
+| 進階函式 `$PSCmdlet.WriteError(...)`，預設偏好          | false | 印出錯誤 |
+| 進階函式把 `$ErrorActionPreference` 設成 `SilentlyContinue` 再 `WriteError` | **false** | **無** |
+
+最後一種就是 `Set-GwtResult` 在做的事。它會在 `$Error` 留下一筆紀錄，馬上移掉（只移開頭
+是 `GwtExit` 的那筆），所以取消不會污染 `$Error`。帶訊息的失敗（找不到符合、不在儲存庫、
+未知選項）則是正常寫進錯誤串流，可以用 `2>&1`、`-ErrorVariable` 接，在 `$ErrorActionPreference = 'Stop'`
+下會依 PowerShell 的慣例變成例外。
+
+`$LASTEXITCODE` 每次結束都一定會設：git 的呼叫會把它改掉，不設就會把 git 的結果碼漏給呼叫端。
+
+### 17.3 `cd -` 為什麼要碰 PowerShell 內部
+
+模組函式裡的 `Set-Location` 確實會改變呼叫者的位置（位置是整個 runspace 共用的），但
+`cd -`（`Set-Location -`）用的歷史記在「各自的 SessionState」裡，模組有自己的一份。結果是
+gwt 切過去之後 `cd -` 不會回到切換之前的目錄，而是跳到一個更早、毫不相干的位置。zsh 版用
+`builtin cd`，`cd -` 一直是可用的，所以這裡要對齊。實測（A → B → 函式切到 C → 呼叫端 `cd -`，
+期望回到 B）：
+
+| 切換方式                                            | `cd -` 回到 |
+| --------------------------------------------------- | ----------- |
+| 模組裡直接 `Set-Location`                           | A（錯）     |
+| `$ExecutionContext.SessionState.Path.SetLocation`   | A（錯）     |
+| `[scriptblock]::Create(...)` 建的區塊               | A（錯）     |
+| `Function:\global:` 建的函式                        | A（錯）     |
+| `[powershell]::Create('CurrentRunspace')` 巢狀管線  | A（錯）     |
+| `Runspace.SessionStateProxy.Path`                   | 是 `$null`，不能用 |
+| 取得引擎最上層 SessionState 再 `Path.SetLocation`   | **B（對）** |
+
+沒有公開 API 可以拿到最上層 SessionState，所以 `Set-GwtLocation` 用反射
+（`ExecutionContext._context` → `TopLevelSessionState` → `PublicSessionState`）。這是整個
+模組唯一碰到 PowerShell 內部的地方，而且有後路：內部結構改了或反射被擋時，會退回一般的
+`Set-Location`——目錄照樣切得過去，只是 `cd -` 回到上面的行為。`cases/04-single-match.ps1`
+與 `cases/14-special-chars.ps1` 驗證 `cd -`，PowerShell 改版造成失效時 CI 會先知道。
+`SetLocation` 的參數會做萬用字元展開（`Set-Location -LiteralPath` 才不會），所以路徑要先
+`WildcardPattern.Escape`，否則 `special-[1]` 這種目錄切不進去（`cases/14` 有測）。
+
+### 17.4 呼叫 git：用 `Process`，不用 `& git`
+
+- **編碼**：git 輸出 UTF-8，PowerShell 預設卻用主控台字碼頁解碼原生命令的輸出（繁中 Windows 是
+  950、英文 Windows 是 437）。路徑或分支含中文就會變亂碼，`Set-Location` 隨後失敗。改
+  `[Console]::OutputEncoding` 會動到全域狀態，所以改用 `System.Diagnostics.Process`，
+  明確指定 `StandardOutputEncoding = UTF-8`。`cases/13-encoding-cjk.ps1` 會先把主控台編碼換成
+  1252 再跑，確認結果不受影響。
+- **不受使用者偏好影響**：在非 repo 目錄 `git rev-parse` 失敗是預期中的結果；用 `Process` 就不會被
+  `$PSNativeCommandUseErrorActionPreference`（原生命令結束碼非 0 即例外）或 `$ErrorActionPreference`
+  炸成例外，也不會動到 `$?`、`$Error`。
+- **工作目錄**：`Set-Location` 不會改 `[Environment]::CurrentDirectory`。用 `Process` 一定要明確帶
+  `(Get-Location -PSProvider FileSystem).ProviderPath`，否則 git 會在錯的目錄執行
+  （`cases/04` 會故意把 .NET 目前目錄指到別處）。
+- 路徑：git 在 Windows 輸出正斜線（`C:/Users/...`），選單與 `--list` 轉成原生分隔符，跟提示字元
+  與 `Get-Location` 一致；比對「目前位置」時 Windows 不分大小寫。
+
+### 17.5 輸出：`$Host.UI.Write`，不用 `[Console]::Out`
+
+`[Console]::Out` 依主控台的輸出字碼頁編碼，`▏`、`…`、`↑↓` 與中文在 437 或 950 下可能變成 `?`；
+`$Host.UI.Write` 直接寫 UTF-16，不受影響。整個畫面先組成一個字串再一次寫出，避免逐列輸出閃爍。
+錯誤訊息則走錯誤串流（`WriteError`），同樣不經過字碼頁。
+
+### 17.6 按鍵
+
+- `[Console]::ReadKey($true)` 直接回報方向鍵、Esc、Backspace，不必像 zsh 版解析 `ESC [ A`，
+  也就不需要 `GWT_ESC_TIMEOUT`（設了不會有作用）。
+- `Ctrl+C`：選單期間 `[Console]::TreatControlCAsInput = $true`，讓它變成一般按鍵，由我們自己
+  決定清理與結束碼（130）；`finally` 一定會還原它與游標，例外或強制中止也一樣。
+- 多位數編號：用 `[Console]::KeyAvailable` 搭配 `Stopwatch` 輪詢。**與 zsh 版刻意不同**：第 10 節
+  寫「若已輸入的數字再加一位就會超過總數，立刻結束等待」，但 zsh 版的程式是讀到第二位數之後才判斷，
+  所以第一位數一律要等滿 `GWT_DIGIT_TIMEOUT`。PowerShell 版把判斷放在等待之前，12 筆時按 `9` 或
+  `3` 立刻跳轉，只有 `1` 要等。zsh 版可以比照修正（見 roadmap）。
+- 字元比較一律 `-ceq`：PowerShell 的 `-eq` 比對字元時不分大小寫，模糊搜尋關掉不分大小寫時會
+  默默失效（`cases/11` 有測）。
+- 使用者資料（分支、路徑、搜尋字串）永遠只當「參數」，不當格式字串：PowerShell 的 `-f` 會解讀
+  `{0}`，分支名稱可以含大括號，這是 zsh 版 `%b` 問題（第 9 節）在這裡的翻版（`cases/10`）。
+
+### 17.7 模糊搜尋現在有三份實作
+
+`gwt.zsh` 的 `_gwt_fuzzy_*`、`site/assets/app.js` 的 `fuzzyTerm`／`fuzzyMatch`、`gwt.psm1` 的
+`Get-GwtFuzzyTermScore`／`Get-GwtFuzzyScore`，規則必須一致（子序列、連續命中、分隔符加成、
+長度懲罰、多詞 AND、同分維持原順序）。改任何一份都要看另外兩份。
+
+### 17.8 測試：Windows 沒有 pty
+
+zsh 版靠 `pty.fork` 開真的 PTY；Windows 沒有，而且 `[Console]::ReadKey` 在輸入被導向時會丟例外。
+所以分兩層：
+
+1. **按鍵驅動**（`tests/pwsh/cases-keys/`）：`gwt.psm1` 有幾個測試掛鉤（`$script:Hooks`：
+   `ReadKey`、`KeyAvailable`、`Write`、`Interactive`），測試餵按鍵、收畫面，再用
+   `tests/pwsh/lib/Screen.ps1` 重播成最終畫面。與 `screen.py` 的差別：全形字佔兩個儲存格而且放不下
+   時整個換行（中文路徑的折行錯誤只有這樣抓得到）；`\n` 視為換行加歸位（真實終端機的行為，
+   zsh 版靠 PTY 的 ONLCR 免費得到）。
+2. **真主控台**（`tests/pwsh/cases-console/`）：`tests/pwsh/lib/ConPty.ps1` 用 `CreatePseudoConsole`
+   把真正的 pwsh 掛在偽主控台上，送 VT 位元組當按鍵，把 ConPTY 重新渲染後的輸出重播成畫面。
+   這一層驗證掛鉤之外的部分：`ReadKey`、Esc 與方向鍵的翻譯、`TreatControlCAsInput`、`$Host.UI.Write`、
+   以 `[Console]::WindowHeight` 量高度，以及 `…` 與全形字在 conhost 的字元寬度表下不會讓一列折成兩行。
+
+寫真主控台測試踩過的坑：
+
+- 一定要帶 `STARTF_USESTDHANDLES` 並把三個標準代碼留空。否則呼叫端的 stdin／stdout 被導向時
+  （CI、工具的工作階段），子行程會繼承那些管線而不是偽主控台，看起來像「不是互動式終端機」。
+- 「ESC 緊接著另一個字元」在 VT 輸入裡是 Alt+字元，ConPTY 會把 `Esc` 與緊接的 `Enter` 併成 Alt+Enter。
+  真人按 Esc 再按 Enter 之間一定隔得夠久，測試要隔一小段時間。
+- 同一個子行程連跑多次 gwt（省掉每次啟動 pwsh 約 2 秒）時，等待要用「某個標記之後」的輸出，
+  前一輪留在輸出裡的選單文字不能拿來滿足下一輪的等待。
+- 12 列的主控台裡，gwt 結束後場景程式印的下一行會把表頭擠出畫面（正常捲動），所以只重播到 gwt
+  結束為止——對應 zsh 測試裡的 `GWT-SCREEN-CUT`。
+
+### 17.9 手動驗證清單（自動測試涵蓋不到的）
+
+自動測試在 ConPTY 裡驗過真的按鍵與排版，但沒有真人坐在實際的終端機前。釋出前請在下面每個環境
+各跑一次（`gwt`、`gwt --list`、選單裡 `↑↓ j k 1-9 / Esc Ctrl+C`）：
+
+- [ ] Windows Terminal（PowerShell 7 設定檔）
+- [ ] 舊的 conhost 視窗（直接執行 `pwsh.exe`）
+- [ ] VS Code 整合終端機（它載入的是 `profile.ps1`，也就是 `CurrentUserAllHosts`）
+- [ ] 中文與英文的 Windows、`GWT_LANG=en`；字碼頁 950／437／65001 下 `▏`、`…`、`↑↓` 都顯示正常
+- [ ] 路徑含中文、含空白的 worktree，選單每一列都只佔一行（全形字與 `…` 的欄寬在實際字型下一致）
+- [ ] 發佈後跑一次真的 `irm https://gwt.gh.miniasp.com/install.ps1 | iex`（GitHub Pages 對 `.ps1`
+      送什麼 Content-Type 沒辦法事先驗證；本機用 `application/octet-stream` 且沒有 charset 的伺服器測過）
+
+macOS／Linux 的 `pwsh` 沒有驗證，也沒有 CI。
+
 ## 附錄：文章中刻意保留的行為
 
 以下行為與原文完全一致，不是忘記改：

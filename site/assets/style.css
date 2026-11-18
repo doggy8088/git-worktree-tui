@@ -269,6 +269,14 @@ kbd {
   overflow-wrap: anywhere;
 }
 
+/* 每條安裝指令前的小標籤（zsh · macOS、Linux / PowerShell 7 · Windows） */
+.install-os {
+  font-size: var(--t-small);
+  color: var(--muted);
+  margin: 14px 0 6px;
+}
+.install-name + .install-os { margin-top: 0; }
+
 .actions { display: flex; flex-wrap: wrap; gap: 10px; }
 
 .copy-state {
@@ -828,7 +836,8 @@ kbd {
 .card-body { padding: 0 24px 26px; max-width: 54ch; font-size: var(--t-body); }
 .card-body[hidden] { display: none; }
 .card-body p + .term-mini { margin-top: 18px; }
-.card-body code { background: #0d0e10; color: var(--ink); }
+.card-body code { background: #0d0e10; color: var(--ink); overflow-wrap: anywhere; }
+.card-body p + p { margin-top: 12px; }
 
 /* --- 結尾 ----------------------------------------------------------------- */
 
@@ -862,6 +871,10 @@ kbd {
 }
 
 .close-say { max-width: 32ch; }
+
+.install-stack { display: flex; flex-direction: column; gap: 14px; }
+.install-set { display: flex; flex-direction: column; gap: 6px; }
+.close .install-os { margin: 0; color: var(--accent-ink); opacity: 0.72; }
 
 .install { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
 

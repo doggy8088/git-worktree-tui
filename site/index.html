@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>gwt — git worktree 的互動式切換指令</title>
-<meta name="description" content="在終端機列出所有 Git worktree，用方向鍵或 j、k 選好，按 / 模糊搜尋分支與目錄，Enter 直接切換目錄。zsh 函式，只依賴 zsh 與 git。">
+<meta name="description" content="在終端機列出所有 Git worktree，用方向鍵或 j、k 選好，按 / 模糊搜尋分支與目錄，Enter 直接切換目錄。有 zsh 與 PowerShell 7 兩個版本，只依賴 shell 與 git。">
 <meta property="og:title" content="gwt — git worktree 的互動式切換指令">
 <meta property="og:description" content="在終端機列出所有 Git worktree，用方向鍵或 j、k 選好，按 / 模糊搜尋，Enter 直接切換目錄。">
 <meta name="author" content="Will 保哥 (Will Huang)">
@@ -40,8 +40,8 @@
   "name": "gwt",
   "alternateName": "git-worktree-tui",
   "applicationCategory": "DeveloperApplication",
-  "operatingSystem": "macOS, Linux",
-  "description": "在終端機列出所有 Git worktree，用方向鍵或 j、k 選好，按 / 模糊搜尋分支與目錄，按 Enter 直接切換目錄的 zsh 函式。只依賴 zsh 與 git。",
+  "operatingSystem": "macOS, Linux, Windows",
+  "description": "在終端機列出所有 Git worktree，用方向鍵或 j、k 選好，按 / 模糊搜尋分支與目錄，按 Enter 直接切換目錄的 zsh 與 PowerShell 7 函式。只依賴 shell 與 git。",
   "url": "https://gwt.gh.miniasp.com/",
   "codeRepository": "https://github.com/doggy8088/git-worktree-tui",
   "license": "https://github.com/doggy8088/git-worktree-tui/blob/main/LICENSE",
@@ -115,12 +115,16 @@
         <p class="lead">在終端機列出所有 worktree，用方向鍵<span class="nb">選好</span>，按 Enter 就切過去。</p>
         <div class="install-block">
           <p class="install-name">安裝</p>
+          <p class="install-os">zsh · macOS、Linux</p>
           <pre class="install-code"><code>curl -fsSL https://gwt.gh.miniasp.com/install.sh | bash</code></pre>
+          <p class="install-os">PowerShell 7 · Windows</p>
+          <pre class="install-code"><code>irm https://gwt.gh.miniasp.com/install.ps1 | iex</code></pre>
         </div>
       </div>
       <div class="hero-foot">
         <div class="actions">
-          <button class="btn" type="button" data-copy="curl -fsSL https://gwt.gh.miniasp.com/install.sh | bash">複製安裝指令</button>
+          <button class="btn" type="button" data-copy="curl -fsSL https://gwt.gh.miniasp.com/install.sh | bash">複製 zsh 指令</button>
+          <button class="btn btn-quiet" type="button" data-copy="irm https://gwt.gh.miniasp.com/install.ps1 | iex">複製 PowerShell 指令</button>
           <a class="btn btn-quiet" href="#how">看它怎麼動</a>
         </div>
         <p class="copy-state" role="status" data-copy-state></p>
@@ -282,16 +286,16 @@ detached</code></pre>
     </div>
     <div class="tiles">
       <div class="tile tile-accent">
-        <p class="tile-num">34</p>
-        <p class="tile-cap">個測試，其中 23 個是開著 PTY 送按鍵的互動測試</p>
+        <p class="tile-num">56</p>
+        <p class="tile-cap">個測試檔：zsh 34、PowerShell 22</p>
       </div>
       <div class="tile tile-paper">
-        <p class="tile-num">2</p>
-        <p class="tile-cap">個平台跑 CI：Ubuntu 與 macOS</p>
+        <p class="tile-num">3</p>
+        <p class="tile-cap">個平台跑 CI：Ubuntu、macOS 與 Windows</p>
       </div>
       <div class="tile tile-ink">
         <p class="tile-num">0</p>
-        <p class="tile-cap">個執行期依賴，只需要 zsh 與 git</p>
+        <p class="tile-cap">個執行期依賴，zsh 或 PowerShell 7 加上 git 就夠了</p>
       </div>
     </div>
   </section>
@@ -306,7 +310,7 @@ detached</code></pre>
           <span class="q">為什麼一定要寫成函式？</span>
         </button>
         <div class="card-body" id="a1" role="region" aria-labelledby="q1" hidden>
-          <p>獨立腳本跑在子處理序裡，它的 <code>cd</code> 只會影響自己，結束後你的終端機還在原地。只有載入目前 shell 的函式能改變工作目錄，所以 gwt 是一個被 <code>source</code> 的函式，不是執行檔。</p>
+          <p>獨立腳本跑在子處理序裡，它的 <code>cd</code> 只會影響自己，結束後你的終端機還在原地。只有載入目前 shell 的函式能改變工作目錄，所以 gwt 是一個被 <code>source</code> 的函式，不是執行檔（PowerShell 版則是用 <code>Import-Module</code> 載入的模組）。</p>
         </div>
       </article>
 
@@ -333,10 +337,10 @@ detached</code></pre>
       <article class="card-faq">
         <button type="button" class="card-head" aria-expanded="false" aria-controls="a3" id="q3">
           <span class="tab">外殼</span>
-          <span class="q">bash 或 fish 可以用嗎？</span>
+          <span class="q">bash、fish 或 Windows PowerShell 5.1 可以用嗎？</span>
         </button>
         <div class="card-body" id="a3" role="region" aria-labelledby="q3" hidden>
-          <p>目前只支援 zsh，因為用到 <code>read -k</code> 與從 1 起算的陣列索引。改寫成 bash 要換成 <code>read -n 1</code> 並重測游標行為，這件事在待辦清單上。</p>
+          <p>目前支援 zsh 與 PowerShell 7（<code>pwsh</code>），其他都還不行。zsh 版用到 <code>read -k</code> 與從 1 起算的陣列索引，改寫成 bash 要換成 <code>read -n 1</code> 並重測游標行為，這件事在待辦清單上。PowerShell 版只支援 PowerShell 7，Windows 內建的 Windows PowerShell 5.1 不支援；在它裡面執行安裝腳本只會提醒你改用 <code>pwsh</code>，不會裝任何東西。</p>
         </div>
       </article>
 
@@ -356,7 +360,7 @@ detached</code></pre>
           <span class="q">想改語言、顏色或選單尺寸？</span>
         </button>
         <div class="card-body" id="a5" role="region" aria-labelledby="q5" hidden>
-          <p>設定都是環境變數：<code>GWT_LANG</code> 換中英文、<code>GWT_NO_COLOR</code> 關顏色、<code>GWT_WIDTH</code> 與 <code>GWT_HEIGHT</code> 指定選單尺寸、<code>GWT_CLEAR_ON_EXIT</code> 決定選完要不要擦掉選單、<code>GWT_DIGIT_TIMEOUT</code> 調整多位數編號的等待時間。</p>
+          <p>設定都是環境變數：<code>GWT_LANG</code> 換中英文、<code>GWT_NO_COLOR</code> 關顏色、<code>GWT_WIDTH</code> 與 <code>GWT_HEIGHT</code> 指定選單尺寸、<code>GWT_CLEAR_ON_EXIT</code> 決定選完要不要擦掉選單、<code>GWT_DIGIT_TIMEOUT</code> 調整多位數編號的等待時間。PowerShell 用 <code>$env:GWT_LANG = 'en'</code> 這樣的寫法設定。</p>
         </div>
       </article>
 
@@ -366,7 +370,8 @@ detached</code></pre>
           <span class="q">之後怎麼更新？</span>
         </button>
         <div class="card-body" id="a6" role="region" aria-labelledby="q6" hidden>
-          <p>再跑一次安裝腳本就是最新版——它會抓最新的 release，換掉 <code>~/.zsh/gwt.zsh</code>，<code>.zshrc</code> 不必再動。要固定版本就在指令後面加 <code>--version v0.1.0</code>。</p>
+          <p>zsh：再跑一次安裝腳本就是最新版——它會抓最新的 release，換掉 <code>~/.zsh/gwt.zsh</code>，<code>.zshrc</code> 不必再動。要固定版本就在指令後面加 <code>--version v0.1.0</code>。</p>
+          <p>PowerShell：同樣再跑一次 <code>irm https://gwt.gh.miniasp.com/install.ps1 | iex</code>，它會換掉 <code>~\.gwt\gwt.psm1</code>，profile 不必再動。要固定版本就改跑 <code>&amp; ([scriptblock]::Create((irm https://gwt.gh.miniasp.com/install.ps1))) -Version vX.Y.Z</code>；移除則把最後的參數換成 <code>-Uninstall</code>。</p>
         </div>
       </article>
 
@@ -378,9 +383,21 @@ detached</code></pre>
     <div class="tile-main">
       <h2 id="close-title">先裝起來<br>再回來看</h2>
       <p class="close-say">一行指令，之後在任何儲存庫裡打 gwt。</p>
-      <div class="install">
-        <code class="install-cmd">curl -fsSL https://gwt.gh.miniasp.com/install.sh | bash</code>
-        <button class="btn btn-dark" type="button" data-copy="curl -fsSL https://gwt.gh.miniasp.com/install.sh | bash">複製</button>
+      <div class="install-stack">
+        <div class="install-set">
+          <p class="install-os">zsh · macOS、Linux</p>
+          <div class="install">
+            <code class="install-cmd">curl -fsSL https://gwt.gh.miniasp.com/install.sh | bash</code>
+            <button class="btn btn-dark" type="button" data-copy="curl -fsSL https://gwt.gh.miniasp.com/install.sh | bash">複製</button>
+          </div>
+        </div>
+        <div class="install-set">
+          <p class="install-os">PowerShell 7 · Windows</p>
+          <div class="install">
+            <code class="install-cmd">irm https://gwt.gh.miniasp.com/install.ps1 | iex</code>
+            <button class="btn btn-dark" type="button" data-copy="irm https://gwt.gh.miniasp.com/install.ps1 | iex">複製</button>
+          </div>
+        </div>
       </div>
       <p class="copy-state" role="status" data-copy-state></p>
     </div>

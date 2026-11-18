@@ -12,7 +12,7 @@ TEST_FILES := tests/run.sh tests/lib/assert.zsh tests/lib/fixture.zsh \
 
 .DEFAULT_GOAL := help
 
-.PHONY: help test lint install uninstall site demo clean
+.PHONY: help test test-pwsh lint install uninstall site demo clean
 
 help:  ## 顯示可用指令
 	@echo "可用指令："
@@ -21,6 +21,9 @@ help:  ## 顯示可用指令
 
 test:  ## 執行全部測試（單元 + PTY 互動）
 	@bash tests/run.sh
+
+test-pwsh:  ## 執行 PowerShell 版測試（需要 pwsh 7；Windows 上含 ConPTY 真主控台測試）
+	@pwsh -NoProfile -File tests/pwsh/run.ps1
 
 lint:  ## 語法檢查（zsh -n 與 python 編譯檢查）
 	@for f in $(ZSH_FILES) $(TEST_FILES); do $(ZSHBIN) -n "$$f" || exit 1; done

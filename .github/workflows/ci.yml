@@ -32,3 +32,21 @@ jobs:
 
       - name: 執行測試
         run: make test
+
+  # PowerShell 7 版（gwt.psm1）。在 Windows 上跑：包含語法檢查、單元測試、
+  # 用測試掛鉤餵按鍵的測試，以及在 ConPTY 真主控台裡送真按鍵的測試。
+  test-pwsh:
+    name: 測試 PowerShell (windows-latest)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: 版本資訊
+        shell: pwsh
+        run: |
+          $PSVersionTable.PSVersion.ToString()
+          git --version
+
+      - name: 執行測試
+        shell: pwsh
+        run: ./tests/pwsh/run.ps1
