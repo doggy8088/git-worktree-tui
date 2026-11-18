@@ -75,6 +75,43 @@ $r = Get-Rows "abc😀d" -Cols 4
 Assert-Eq 'emoji 只剩一欄放不下時整個換行（不會切成半個）：第一列' 'abc' $r[0]
 Assert-Eq 'emoji 整個換到下一列：下一列' '😀d' $r[1]
 
+# --- 寫滿一列之後的游標（延遲換行狀態）-------------------------------------------------------------
+# 真實終端機寫滿最後一欄之後，游標其實還停在最後一欄，只是記著「下一個字要先換行」。這時的游標移動與
+# 清除指令都以最後一欄為準，而且會把「要先換行」的記號清掉。重播器把這個狀態記成「欄位 = 欄寬」（比最後一欄
+# 多一格）；如果清除指令直接拿它當索引，ESC[1K／ESC[1J 會寫到列的外面而丟例外，ESC[K 會漏掉最後一格。
+# 例外要變成明確的失敗訊息，不是整個測試檔當掉。
+function Get-RowsSafe {
+  param([string]$Text, [int]$Rows = 4, [int]$Cols = 5)
+  try { return @(Get-Rows -Text $Text -Rows $Rows -Cols $Cols) }
+  catch { return @("EXCEPTION: $($_.Exception.Message)", '', '', '') }
+}
+$r = Get-RowsSafe "abcde${e}[K"
+Assert-Eq 'ESC[K 在寫滿的一列上：游標在最後一欄，最後一格也要清掉' 'abcd' $r[0]
+$r = Get-RowsSafe "abcde${e}[1KX"
+Assert-Eq 'ESC[1K 在寫滿的一列上：清到最後一欄（含）；不能寫到列的外面。之後的字寫在最後一欄（記號已清掉，不換行）' '    X' $r[0]
+$r = Get-RowsSafe "abcde${e}[1Dx"
+Assert-Eq 'ESC[1D 在寫滿的一列上：從最後一欄往左一格（第 4 欄），不是從欄寬往左' 'abcxe' $r[0]
+$r = Get-RowsSafe "abcde${e}[1X"
+Assert-Eq 'ESC[1X 在寫滿的一列上：清掉最後一格' 'abcd' $r[0]
+$r = Get-RowsSafe "abcde${e}[J"
+Assert-Eq 'ESC[J 在寫滿的一列上：從最後一欄清到畫面結尾' 'abcd' $r[0]
+$r = Get-RowsSafe "ab`ncdefg${e}[1J" -Rows 3
+Assert-Eq 'ESC[1J 在寫滿的一列上：游標所在列之上的列都清掉（第一列）' '' $r[0]
+Assert-Eq 'ESC[1J 在寫滿的一列上：游標所在列（cdefg 寫滿的那一列）清到最後一欄（含）' '' $r[1]
+$r = Get-RowsSafe "abcde${e}[Kf"
+Assert-Eq 'ESC[K 清掉「要先換行」的記號：之後的字蓋在最後一欄，不換行' 'abcdf' $r[0]
+$r = Get-RowsSafe "abcde${e}[Kf"
+Assert-Eq 'ESC[K 之後沒有第二列' '' $r[1]
+# 不移動游標、也不清記號的序列（SGR）不能把「要先換行」清掉
+$r = Get-RowsSafe "abcde${e}[0mf"
+Assert-Eq 'SGR 不清「要先換行」的記號：f 換到下一列' 'abcde' $r[0]
+Assert-Eq 'SGR 之後 f 在下一列' 'f' $r[1]
+$r = Get-RowsSafe "abcde${e}[?25lf"
+Assert-Eq '顯示／隱藏游標也不清記號' 'f' $r[1]
+# 寫滿之後往上移：欄位是最後一欄（第 5 欄），不是欄寬（第 6 欄，已經在列的外面）
+$r = Get-RowsSafe "x`nabcde${e}[1Ay" -Rows 3
+Assert-Eq 'ESC[1A 在寫滿的一列上：y 寫在上一列的最後一欄，原本的 x 還在' 'x   y' $r[0]
+
 # --- 蓋在全形字的一半上面（Copilot：蓋寫全形字會留下舊的儲存格）------------------------------------
 # 全形字佔兩格（左半存字、右半存 $null）。蓋掉其中一半，另一半必須跟著清成空白，跟真實終端機一樣；
 # 否則殘留的半個會讓整列欄位錯開，後面的斷言（折行、殘影）就不可靠。

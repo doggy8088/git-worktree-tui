@@ -101,6 +101,13 @@ function Get-ScreenReplay {
       $final = $m.Groups[2].Value
       $i = $m.Index + $m.Length
       $first = if ($params -match '^(\d+)') { [int]$Matches[1] } else { -1 }
+      # 寫滿最後一欄之後（延遲換行），真實終端機的游標其實還停在最後一欄，只是記著「下一個字要先換行」。
+      # 重播器把這個狀態記成「欄位 = 欄寬」（比最後一欄多一格）。游標移動與清除指令都以最後一欄為準，
+      # 而且會把那個記號清掉，所以先把欄位收回最後一欄：不收的話，ESC[1K／ESC[1J 會寫到列的外面而丟例外，
+      # ESC[K／X／J 會漏掉最後一格，ESC[D 會少退一格。
+      # 只有這幾種會動游標或清除的指令要收；SGR、顯示／隱藏游標等不會清掉記號，不能收，
+      # 否則下一個字會蓋在最後一欄，而不是換行。
+      if ($final -cmatch '^[ABCDGdKXJ]$' -and $state.Col -ge $Cols) { $state.Col = $Cols - 1 }
       switch -CaseSensitive ($final) {
         'A' { $k = if ($first -gt 0) { $first } else { 1 }; $state.Row = [math]::Max(0, $state.Row - $k) }
         'B' { $k = if ($first -gt 0) { $first } else { 1 }; $state.Row = [math]::Min($Rows - 1, $state.Row + $k) }
