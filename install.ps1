@@ -68,6 +68,13 @@ if ($PSVersionTable.PSEdition -ne 'Core') {
 # All logic lives in this scriptblock: under iex the top level is the user's own
 # session, and functions or variables left outside it would stay in their environment.
 & {
+  # Every failure must reach the catch at the bottom. With the default 'Continue', a
+  # non-terminating error from Move-Item or Remove-Item (a locked file, a denied ACL)
+  # would be printed and the script would carry on: rewrite the profile and report
+  # success although the module was never replaced or removed. This is a local
+  # variable of this scriptblock; the caller's preference is not touched.
+  $ErrorActionPreference = 'Stop'
+
   $repo = 'doggy8088/git-worktree-tui'
   $beginMark = '# >>> gwt (git-worktree-tui) >>>'
   $endMark = '# <<< gwt (git-worktree-tui) <<<'
@@ -128,6 +135,19 @@ gwt \u5b89\u88dd\u8173\u672c\uff08PowerShell 7\uff09
       $info.Preamble = [byte[]]$bytes[0..2]
       $info.Text = $utf8.GetString($bytes, 3, $n - 3)
     }
+    # UTF-32 first: the UTF-32LE BOM (FF FE 00 00) starts with the UTF-16LE BOM (FF FE),
+    # so checking UTF-16 first would take a UTF-32 file for UTF-16 and append a block
+    # in the wrong encoding, leaving a file that neither decoder can read.
+    elseif ($n -ge 4 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE -and $bytes[2] -eq 0x00 -and $bytes[3] -eq 0x00) {
+      $info.Encoding = [System.Text.UTF32Encoding]::new($false, $false)
+      $info.Preamble = [byte[]]$bytes[0..3]
+      $info.Text = $info.Encoding.GetString($bytes, 4, $n - 4)
+    }
+    elseif ($n -ge 4 -and $bytes[0] -eq 0x00 -and $bytes[1] -eq 0x00 -and $bytes[2] -eq 0xFE -and $bytes[3] -eq 0xFF) {
+      $info.Encoding = [System.Text.UTF32Encoding]::new($true, $false)
+      $info.Preamble = [byte[]]$bytes[0..3]
+      $info.Text = $info.Encoding.GetString($bytes, 4, $n - 4)
+    }
     elseif ($n -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
       $info.Encoding = [System.Text.Encoding]::Unicode
       $info.Preamble = [byte[]]$bytes[0..1]
@@ -165,16 +185,20 @@ gwt \u5b89\u88dd\u8173\u672c\uff08PowerShell 7\uff09
     '(?ms)^[ \t]*' + [regex]::Escape($beginMark) + '[ \t]*\r?\n.*?^[ \t]*' +
     [regex]::Escape($endMark) + '[ \t]*(?:\r?\n|\z)')
 
-  # Remove the block we added. Install puts one blank line in front of the block; when
-  # the block is at the end of the file that separator goes too, so the file returns to
-  # what it was before install.
+  # Remove the block we added. Install puts exactly ONE newline between the existing
+  # content and the block (when there is any content), whether or not that content
+  # ended with a newline: "A" becomes "A<nl><block>", "A<nl>" becomes "A<nl><nl><block>".
+  # When the block is at the end of the file that one newline goes with it, which
+  # returns both cases to the original bytes. The rule needs no saved state because the
+  # two outputs differ, and it is exact for any original: empty, whitespace only, with
+  # or without a final newline.
   function Remove-GwtBlock([string]$Text) {
     while ($true) {
       $m = $blockRegex.Match($Text)
       if (-not $m.Success) { return $Text }
       $before = $Text.Substring(0, $m.Index)
       $after = $Text.Substring($m.Index + $m.Length)
-      if ($after.Length -eq 0 -and $before -match '(\r?\n){2}\z') {
+      if ($after.Length -eq 0 -and $before -match '\r?\n\z') {
         $before = $before -replace '\r?\n\z', ''
       }
       $Text = $before + $after
@@ -290,16 +314,22 @@ gwt \u5b89\u88dd\u8173\u672c\uff08PowerShell 7\uff09
       return "Import-Module '" + $target.Replace("'", "''") + "'"
     }
 
+    # Written next to the module when install had to CREATE the profile. It is how
+    # uninstall tells "a file we made" (delete it again) from "an empty or
+    # whitespace-only file the user already had" (restore it exactly).
+    $createdMarker = Join-Path $installDir '.profile-created'
+
     # ---- uninstall -------------------------------------------------------------------
     if ($Uninstall) {
       $removed = $false
+      $createdByUs = Test-Path -LiteralPath $createdMarker -PathType Leaf
       if (Test-Path -LiteralPath $profileFile -PathType Leaf) {
         $info = Read-ProfileText $profileFile
         $clean = Remove-GwtBlock $info.Text
         if ($clean -ne $info.Text) {
-          if ($clean.Trim().Length -eq 0) {
-            # Nothing but our block was in the file: remove the file too, back to
-            # the state before install.
+          if ($createdByUs -and $clean.Length -eq 0) {
+            # We created this file and nothing but our block was ever in it: remove
+            # it, back to the state before install.
             Remove-Item -LiteralPath $profileFile -Force
           }
           else {
@@ -314,6 +344,7 @@ gwt \u5b89\u88dd\u8173\u672c\uff08PowerShell 7\uff09
         Remove-Item -LiteralPath $target -Force
         Say (M '\u5df2\u522a\u9664 {0}' $target)   # "Deleted <file>"
       }
+      if ($createdByUs) { Remove-Item -LiteralPath $createdMarker -Force }
       if ((Test-Path -LiteralPath $installDir -PathType Container) -and -not (Get-ChildItem -LiteralPath $installDir -Force)) {
         Remove-Item -LiteralPath $installDir -Force
       }
@@ -387,12 +418,18 @@ gwt \u5b89\u88dd\u8173\u672c\uff08PowerShell 7\uff09
     $foreign = @(Get-ForeignLines $info.Text)
 
     $nl = if ($text -match '\r\n') { "`r`n" } elseif ($text -match '\n') { "`n" } else { [Environment]::NewLine }
-    if ($text.Length -gt 0) {
-      if (-not $text.EndsWith("`n")) { $text += $nl }
-      $text += $nl                                  # one blank line before the block
-    }
+    # Exactly one newline between the existing content and the block (see
+    # Remove-GwtBlock, which removes exactly that one). Content that ends with a newline
+    # gets a blank line before the block; content that does not gets the block on the
+    # next line. Never add a second newline to "terminate" the last line: then "A" and
+    # "A<nl>" would look the same after install and uninstall could not tell them apart.
+    if ($text.Length -gt 0) { $text += $nl }
     $text += $beginMark + $nl + (Get-ImportLine) + $nl + $endMark + $nl
     Write-ProfileText $profileFile $info $text
+    if (-not $info.Exists) {
+      # We created the profile: remember it, so uninstall deletes it again
+      [void](New-Item -ItemType File -Path $createdMarker -Force)
+    }
 
     # "Installed to <file> (version <v>)" / "Added the import block to <profile>"
     Say (M '\u5df2\u5b89\u88dd\u5230 {0}\uff08\u7248\u672c {1}\uff09' $target (Get-InstalledVersion $target))

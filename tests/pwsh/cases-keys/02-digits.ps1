@@ -75,4 +75,37 @@ $r = Invoke-Gwt -Keys '13q'
 Assert-Rc '超出範圍的兩位數被忽略，q 取消' 1 $r.Rc
 Assert-Eq '位置不變' $before (Get-Here)
 
+# 被忽略的數字不能弄掉目前的選取：5 筆時按 9，光棒要還在原處，Enter 仍然能確認
+Enter-Fixture 'shop'
+$r = Invoke-Gwt -Keys '9<enter>'
+Assert-Rc '超出範圍的 9 之後 Enter 仍可確認（回傳 0）' 0 $r.Rc
+Assert-Eq 'Enter 選的是原本反白的第 1 筆' (Get-FixturePath $shop 1) (Get-Here)
+
+Enter-Fixture 'shop'
+$r = Invoke-Gwt -Keys '9<down><enter>'
+Assert-Eq '超出範圍的 9 之後 ↓ 從第 1 筆移到第 2 筆' (Get-FixturePath $shop 2) (Get-Here)
+
+Enter-Fixture 'shop'
+$r = Invoke-Gwt -Keys '9<up><enter>'
+Assert-Eq '超出範圍的 9 之後 ↑ 從第 1 筆循環到最後一筆' (Get-FixturePath $shop (Get-FixtureCount $shop)) (Get-Here)
+
+Enter-Fixture 'shop'
+$env:GWT_CLEAR_ON_EXIT = '0'
+$r = Invoke-Gwt -Keys '9' -Rows 20 -Cols 100
+Remove-Item Env:\GWT_CLEAR_ON_EXIT
+Assert-Screen '超出範圍的 9 之後光棒仍在第 1 筆（沒有消失）' '^SELECTED=1$' (Get-ScreenReplay -Text $r.Raw -Rows 20 -Cols 100)
+
+Set-Location -LiteralPath (Join-Path $env:GWT_FIXTURE 'twelve-w05')
+$r = Invoke-Gwt -Keys '13<enter>'
+Assert-Rc '12 筆時 13 被忽略，Enter 仍可確認' 0 $r.Rc
+Assert-Eq '13 被忽略後 Enter 選原本反白的第 1 筆' (Get-FixturePath $twelve 1) (Get-Here)
+
+# 等待第二位數的時候按 Ctrl+C：是中斷，不能反而讓第 1 筆生效、切換目錄、回報成功
+Set-Location -LiteralPath (Join-Path $env:GWT_FIXTURE 'twelve-w05')
+$here = Get-Here
+$r = Invoke-Gwt -Keys '1<c-c>'
+Assert-Rc '等第二位數時按 Ctrl+C 回傳 130' 130 $r.Rc
+Assert-Eq 'Ctrl+C 之後沒有切換目錄' $here (Get-Here)
+Assert-Contains 'Ctrl+C 之後游標有還原' "$ESC[?25h" $r.Raw
+
 Complete-Tests

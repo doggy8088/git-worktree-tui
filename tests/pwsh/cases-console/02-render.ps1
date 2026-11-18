@@ -57,7 +57,7 @@ Assert-Screen '沒有重複的列' '^DUPLICATES=-$' $menu
 Assert-Screen '下方標示目前範圍' '顯示 8-16，共 40 筆' $menu
 
 # --- 省略號與欄寬：窄視窗讓路徑與分支都被截斷（… 在 CJK 字碼頁的主控台可能被當成 2 欄）
-foreach ($cols in 50, 60, 80) {
+foreach ($cols in 25, 50, 60, 80) {
   $r = Run-Menu 'shop' @($k.Down, 'q') 30 $cols
   Assert-True "$cols 欄：沒有逾時" ((-not $r.TimedOut) -and ($null -eq $r.WaitFailed))
   Assert-Screen "$cols 欄：5 筆各佔一列（省略號沒有造成折行）" '^ITEM_ROWS=5$' $r.Screen

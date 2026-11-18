@@ -2,7 +2,7 @@
 # PowerShell 版測試總入口（對應 tests/run.sh）。需要 pwsh 7 與 git，沒有其他依賴。
 #
 #   pwsh tests/pwsh/run.ps1                 全部（語法檢查 + 單元 + 按鍵驅動）
-#   pwsh tests/pwsh/run.ps1 -Filter search  只跑檔名含 search 的測試
+#   pwsh tests/pwsh/run.ps1 -Filter search  只跑檔名含 search 的測試（可以給多個：-Filter a,b）
 #   pwsh tests/pwsh/run.ps1 -Keep           保留暫存目錄，方便失敗時進去追
 #   pwsh tests/pwsh/run.ps1 -SkipConsole    略過需要真主控台（ConPTY）的測試
 #
@@ -17,12 +17,14 @@
 # -----------------------------------------------------------------------------
 [CmdletBinding()]
 param(
-  [string]$Filter = '',
+  [string[]]$Filter = @(),
   [switch]$Keep,
   [switch]$SkipConsole
 )
 
 $ErrorActionPreference = 'Stop'
+# pwsh -File 不會把 "-Filter a,b" 解析成陣列，而是一整個字串，所以自己用逗號切開
+$Filter = @($Filter | ForEach-Object { $_ -split ',' } | Where-Object { $_ })
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).ProviderPath
 $pwshExe = (Get-Process -Id $PID).Path
 
@@ -98,8 +100,10 @@ try {
 
   function Invoke-Group {
     param([string]$Title, [string]$Dir)
+    # -Filter 可以給多個：檔名符合任何一個就跑；沒給就全跑
     $cases = @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot $Dir) -Filter *.ps1 -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -like "*$Filter*" } | Sort-Object Name)
+        Where-Object { $n = $_.Name; (@($Filter).Count -eq 0) -or (@(@($Filter) | Where-Object { $n -like "*$_*" }).Count -gt 0) } |
+        Sort-Object Name)
     if ($cases.Count -eq 0) { return }
     Write-Line "`n$Title"
     foreach ($c in $cases) { Invoke-Case $c }

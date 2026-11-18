@@ -369,8 +369,9 @@ function Initialize-GwtSize {
   }
   if ($h -lt 6) { $h = 6 }
   # 多留一欄，避免最後一欄剛好觸發終端機自動換行
+  # 下限 16（17 欄的終端機）：再窄，連 前綴 + 最短的路徑 都放不下，只能折行（zsh 版的下限是 24）
   $w = $w - 1
-  if ($w -lt 24) { $w = 24 }
+  if ($w -lt 16) { $w = 16 }
   $script:Height = $h
   $script:Width = $w
 }
@@ -747,13 +748,31 @@ function Format-GwtRow {
   if ($mark -ne '') { $suffix += ' ' + $st.Mark + $mark + $st.Reset }
 
   $avail = $script:Width - $prefix.Length - $gap - (Get-GwtWidth (Remove-GwtAnsi $suffix))
-  if ($avail -lt 4) { $avail = 4 }
+
+  # 完整的後方資訊放不下（路徑連最短的 4 欄都分不到）時，不能硬塞：一列折成兩行，
+  # 重繪與收尾算的列數就會錯，畫面留下殘影。依序省略：先拿掉 commit 只留 [分支]，
+  # 再放不下就連分支都拿掉，整列只剩編號與路徑。
+  $minPath = 4
+  if ($avail -lt $minPath) {
+    $room = $script:Width - $prefix.Length - $gap - $minPath - 2     # 扣掉 [ ] 兩欄
+    if ($room -ge 1) {
+      $suffix = $st.Branch + '[' + (Get-GwtClipped $branch $room) + ']' + $st.Reset
+      $avail = $script:Width - $prefix.Length - $gap - (Get-GwtWidth (Remove-GwtAnsi $suffix))
+    }
+    else {
+      $suffix = ''
+      $avail = $script:Width - $prefix.Length
+    }
+  }
+  if ($avail -lt 1) { $avail = 1 }
   $shown = Get-GwtClipped $wtPath $avail
 
   if ($isSelected) {
     # 光棒只反白到路徑為止，後方分支與狀態維持原色
+    if ($suffix -eq '') { return $st.Bar + $prefix + $shown + $st.Reset }
     return $st.Bar + $prefix + $shown + ' ' + $st.Reset + ' ' + $suffix
   }
+  if ($suffix -eq '') { return $prefix + $shown }
   return $prefix + $shown + '  ' + $suffix
 }
 
@@ -893,7 +912,14 @@ function Wait-GwtKey {
 
 # 數字鍵：worktree 超過 9 個時，再等一小段時間看是否還有第二位數字。
 # 例如清單有 12 筆時，按 1 再按 2 會跳到第 12 筆；只按 1 則等 timeout 後跳第 1 筆。
-# 若等待期間收到的是其他按鍵（例如 j），就交回主迴圈處理，不會被吃掉。
+#
+# 只「回傳」解析出的編號，不動 $script:Selected：編號超出範圍（5 筆時按 9、12 筆時按 13）
+# 會被呼叫端忽略，這時目前的選取必須維持原樣，否則光棒會消失、Enter 會回傳失敗。
+#
+# 等待期間收到的不是數字的按鍵，放進 $script:PendingKey 交給呼叫端：
+#   - Ctrl+C 是中斷，呼叫端要直接中止，不能反而讓剛才的數字生效
+#   - 編號超出範圍時，主迴圈接著照一般按鍵處理它
+#   - 編號有效時選單隨即關閉，其他按鍵就沒有後續了（跟剛按完數字就立刻跳轉的短清單一致）
 #
 # 「再加一位就超過總數就不必等」這條，在等待「之前」就要判斷：12 筆時按 9，
 # 90 > 12，第二位數不可能有效，立刻跳轉。（zsh 版是讀到第二位數之後才判斷，
@@ -915,7 +941,7 @@ function Invoke-GwtPickNumber {
       break
     }
   }
-  $script:Selected = [int]$digits
+  return [int]$digits
 }
 
 # 處理一個按鍵。回傳 -1 表示繼續讀鍵，否則是要結束選單的結果碼（0 選定，1 取消，130 中斷）。
@@ -979,14 +1005,21 @@ function Invoke-GwtKey {
       elseif ($ch -ceq 'j' -or $ch -ceq 'J') { Move-GwtSelection 1 }
       elseif ($ch -ceq 'q' -or $ch -ceq 'Q') { return 1 }
       elseif ($ch -match '^[1-9]$') {
-        Invoke-GwtPickNumber $ch
-        if ($script:Selected -ge 1 -and $script:Selected -le $script:Count) {
+        $picked = Invoke-GwtPickNumber $ch
+        # 等第二位數的時候按了 Ctrl+C：是中斷。不論數字有沒有效都以中斷為準
+        if ($null -ne $script:PendingKey -and $script:PendingKey.Name -eq 'CtrlC') {
+          $script:PendingKey = $null
+          return 130
+        }
+        if ($picked -ge 1 -and $picked -le $script:Count) {
+          $script:Selected = $picked
           # 先重畫一次，讓使用者看到最後落在哪一筆
           Add-GwtText "$($script:CSI)$($script:Drawn)A"
           Add-GwtList
           Send-GwtFrame
           return 0
         }
+        # 超出範圍：忽略，目前的選取維持原樣
       }
     }
     default { }
