@@ -35,7 +35,11 @@ function Get-ScreenReplay {
   # 每個儲存格存一個字串；全形字的第二格存 $null（輸出時略過）
   $grid = New-Object 'object[]' ($Rows)
   for ($r = 0; $r -lt $Rows; $r++) { $grid[$r] = New-Object 'object[]' ($Cols); for ($c = 0; $c -lt $Cols; $c++) { $grid[$r][$c] = ' ' } }
-  $state = @{ Row = 0; Col = 0 }
+  # Wraps：因為「寫滿一列還繼續寫」而自動換行的次數（不含明確的 \n）。gwt 保證每一列都留在寬度之內，
+  # 所以選單本身的輸出一次自動換行都不該有。這比「數有幾列含 [n]」直接：一列折成兩行時，
+  # 接續的那一行（例如 "7)"）不含 [n]，ITEM_ROWS 與 DUPLICATES 都看不出來——只有後面碰巧又重繪
+  # 一次、列數對不上時才會間接露出來。
+  $state = @{ Row = 0; Col = 0; Wraps = 0 }
 
   $blank = {
     param($r)
@@ -131,7 +135,7 @@ function Get-ScreenReplay {
     $i++
     $w = Get-CellWidth $unit
     # 延遲換行：寫到最後一欄之後，要等下一個字元才真的換行；放不下的全形字整個換行
-    if ($state.Col + $w -gt $Cols) { & $newline }
+    if ($state.Col + $w -gt $Cols) { $state.Wraps++; & $newline }
     $grid[$state.Row][$state.Col] = $unit
     if ($w -eq 2) { $grid[$state.Row][$state.Col + 1] = $null }
     $state.Col += $w
@@ -179,5 +183,6 @@ function Get-ScreenReplay {
   $out.Add("INDEXES=$(& $compress @($indexes))")
   $out.Add("DUPLICATES=$(if ($dups.Count -eq 0) { '-' } else { & $compress @($dups) })")
   $out.Add("SELECTED=$selected")
+  $out.Add("WRAPS=$($state.Wraps)")
   return ($out -join "`n")
 }

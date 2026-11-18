@@ -83,6 +83,7 @@ foreach ($cols in 30, 48, 60, 120) {
   $screen = Get-ScreenReplay -Text $r.Raw -Rows 12 -Cols $cols
   Assert-Screen "$cols 欄下 2 筆各佔一列" '^ITEM_ROWS=2$' $screen
   Assert-Screen "$cols 欄下沒有重複" '^DUPLICATES=-$' $screen
+  Assert-Screen "$cols 欄下沒有任何一列折行" '^WRAPS=0$' $screen
 }
 
 # 很窄的終端機：一列放不下完整資訊時，要先省略 commit、再省略分支、最後只留路徑。
@@ -97,6 +98,15 @@ foreach ($fx in 'longname', 'shop', 'cjk') {
     Assert-Screen "$fx $cols 欄：每筆各佔一列（$count 筆）" "^ITEM_ROWS=$count$" $screen
     Assert-Screen "$fx $cols 欄：沒有重複的列" '^DUPLICATES=-$' $screen
     Assert-Screen "$fx $cols 欄：光棒在第 2 筆" '^SELECTED=2$' $screen
+    Assert-Screen "$fx $cols 欄：沒有任何一列折行（WRAPS=0）" '^WRAPS=0$' $screen
+
+    # 只畫第一個畫面、沒有任何按鍵（所以沒有重繪）。ITEM_ROWS 數的是含 [n] 的列，折行時接續的那一行
+    # （例如 "7)"）不含 [n]，所以一列折成兩行照樣算一列；而沒有重繪就不會因為列數對不上而露出重複。
+    # 這個情境只有直接數自動換行（WRAPS）才抓得到。
+    $first = Invoke-Gwt -Keys '' -Rows 14 -Cols $cols
+    $screen0 = Get-ScreenReplay -Text $first.Raw -Rows 14 -Cols $cols
+    Assert-Screen "$fx $cols 欄：只畫第一個畫面時 $count 筆各佔一列" "^ITEM_ROWS=$count$" $screen0
+    Assert-Screen "$fx $cols 欄：只畫第一個畫面時沒有任何一列折行（WRAPS=0）" '^WRAPS=0$' $screen0
   }
 }
 

@@ -588,6 +588,12 @@ zsh 版靠 `pty.fork` 開真的 PTY；Windows 沒有，而且 `[Console]::ReadKe
    先送 `\r` 再送 `ESC[2K`，所以按鍵驅動的測試看不出來；但 ConPTY 的輸出會在游標已移到某一欄之後才送
    `ESC[2K`，歸零會讓後面的文字畫到錯的位置。`screen.py` 有同樣的寫法（`clear_line` 會把 `col` 歸零），
    zsh 版沒有受影響的原因同樣是 gwt 的畫法總是先送 `\r`，沒有改它。
+   結構摘要的 `ITEM_ROWS` 數的是「含 `[n]` 的列」，這有個盲點（code review 指出）：一列折成兩行時，接續的
+   那一行（例如 `7)`）不含 `[n]`，所以折行的項目照樣算一列；而且沒有後續按鍵、沒有重繪時，也不會因為
+   列數對不上而露出重複。實測：把舊的窄視窗行為放回去，只畫第一個畫面的 21 個 `ITEM_ROWS` 斷言一個都沒失敗，
+   而實際上有 12 個組合（17–25 欄）每一列都折行了。所以摘要多了 `WRAPS`：直接數「寫滿一列還繼續寫」造成的
+   自動換行次數。選單本身應該是 0；測試自己印的長行（`AFTER=`、場景程式的 `RESULT-n` 帶路徑）在窄視窗
+   本來就會換行，那些測試不能斷言 `WRAPS=0`，真主控台的測試要重播到 gwt 結束為止再斷言。
 2. **真主控台**（`tests/pwsh/cases-console/`）：`tests/pwsh/lib/ConPty.ps1` 用 `CreatePseudoConsole`
    把真正的 pwsh 掛在偽主控台上，送 VT 位元組當按鍵，把 ConPTY 重新渲染後的輸出重播成畫面。
    這一層驗證掛鉤之外的部分：`ReadKey`、Esc 與方向鍵的翻譯、`TreatControlCAsInput`、`$Host.UI.Write`、
