@@ -599,6 +599,15 @@ zsh 版靠 `pty.fork` 開真的 PTY；Windows 沒有，而且 `[Console]::ReadKe
    就不可靠。重播器為此有 `$orphanLeft`／`$orphanRight`，`cases/18-screen-replay.ps1` 有 7 個蓋寫與清除的案例；
    把這段處理拿掉，正好這 7 個失敗、其餘 108 個通過。重播器的寬度表與 gwt 的是兩份各自的實作，都對照
    `tests/pwsh/lib/WidthOracle.ps1`（見 17.12）。
+   寫滿最後一欄之後（延遲換行），真實終端機的游標其實還停在最後一欄，只是記著「下一個字要先換行」。重播器把這個
+   狀態記成「欄位 = 欄寬」（比最後一欄多一格），清除與游標移動指令如果直接拿它當索引就錯了（code review 指出）：
+   `ESC[1K`／`ESC[1J` 會寫到列的外面而丟例外，`ESC[K`／`X`／`J` 漏掉最後一格，`ESC[D` 少退一格，`ESC[K`
+   之後的字不會蓋在最後一欄而是錯誤地換行。gwt 自己的列永遠不超過「欄寬 - 1」，所以按鍵驅動的測試碰不到；
+   ConPTY 輸出裡 conhost 可能把一列寫滿再送清除指令。修正是：會動游標或清除的指令（A B C D G d K X J）先把
+   欄位收回最後一欄（同時清掉那個記號）；SGR、顯示／隱藏游標這類不會清記號的序列不能收，否則下一個字會蓋在
+   最後一欄而不是換行。`cases/18-screen-replay.ps1` 有 13 個斷言（例外會被接住，變成明確的失敗訊息，不是整個
+   測試檔當掉）；把那一行拿掉，其中 9 個失敗，另外 4 個通過（SGR 與游標顯示的對照案例本來就該兩邊都通過，
+   還有 `ESC[1J` 的第二列），整個檔案其餘的 119 個斷言也都通過。
 2. **真主控台**（`tests/pwsh/cases-console/`）：`tests/pwsh/lib/ConPty.ps1` 用 `CreatePseudoConsole`
    把真正的 pwsh 掛在偽主控台上，送 VT 位元組當按鍵，把 ConPTY 重新渲染後的輸出重播成畫面。
    這一層驗證掛鉤之外的部分：`ReadKey`、Esc 與方向鍵的翻譯、`TreatControlCAsInput`、`$Host.UI.Write`、
