@@ -106,6 +106,20 @@ try {
   Assert-Eq '[iex] 使用者的工作階段裡多出來的函式只有 gwt（install.ps1 的 helper 沒有外洩）' 'gwt' ([regex]::Match($r.Output, '(?m)^NEWFN=(.*?)\s*$').Groups[1].Value)
   Assert-Eq '[iex] 使用者的工作階段裡沒有多出任何變數（參數與內部狀態沒有外洩）' '' ([regex]::Match($r.Output, '(?m)^NEWVAR=(.*?)\s*$').Groups[1].Value)
 
+  # --- 安裝目錄含萬用字元：裝完立刻載入到目前工作階段的那一次 Import-Module 也不能被樣式展開 ------------
+  # （profile 裡的 import 另外在 15-install.ps1 測）。旁邊放一個誘餌 gwt1\gwt.psm1，只會印 DECOY。
+  $sb = New-Sandbox; Reset-Requests
+  $wild = Join-Path $sb.Root 'gwt[12]'
+  $decoy = Join-Path $sb.Root 'gwt1'
+  New-Item -ItemType Directory -Path $decoy | Out-Null
+  [System.IO.File]::WriteAllText((Join-Path $decoy 'gwt.psm1'), "function gwt { 'DECOY' }`nExport-ModuleMember -Function gwt`n", [System.Text.UTF8Encoding]::new($false))
+  $envWild = Get-Env $sb 'latest-without-module'; $envWild['GWT_INSTALL_DIR'] = $wild
+  $r = Invoke-Child "irm '$base/install.ps1' | iex; `$__rc = `$LASTEXITCODE; 'WHO=' + (gwt --version); exit `$__rc" $envWild
+  Assert-Rc '[iex、含萬用字元的安裝目錄] 結束碼 0' 0 $r.Rc
+  Assert-True '[iex、含萬用字元的安裝目錄] 模組裝進那個目錄' (Test-Path -LiteralPath (Join-Path $wild 'gwt.psm1'))
+  $realVersion = Invoke-InGwt { $script:GwtVersion }
+  Assert-Eq '[iex、含萬用字元的安裝目錄] 裝完立刻載入的是剛裝的 gwt，不是隔壁的誘餌' "gwt $realVersion" ([regex]::Match($r.Output, '(?m)^WHO=(.*?)\s*$').Groups[1].Value)
+
   # --- irm | iex：最新 release 有 PowerShell 版 → 用那個 release，不去抓 main -------------------
   $sb = New-Sandbox; Reset-Requests
   $r = Invoke-Child "irm '$base/install.ps1' | iex; exit `$LASTEXITCODE" (Get-Env $sb 'latest-with-module')

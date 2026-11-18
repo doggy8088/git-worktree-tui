@@ -37,6 +37,28 @@ foreach ($budget in 10, 14, 19, 25) {
 $r = Clip $cjk 19
 Assert-Contains '中文路徑保留尾段' '結帳錯誤' $r
 
+# --- 逐字對照 Unicode 的標準答案（tests/pwsh/lib/WidthOracle.ps1，不是任何程式算出來的）---------------
+# 基本多文種平面裡寬度為 2 的符號（⚡ ⌚ ✅ ⭐ ...）不在 CJK 範圍內：只有 CJK 範圍的表會把它們當成 1 欄，
+# 選單的一列就比算出來的寬，折行之後重繪與收尾的列數對不上。
+. "$env:GWT_ROOT\tests\pwsh\lib\WidthOracle.ps1"
+foreach ($entry in $script:WidthOracle) {
+  $ch = [char]::ConvertFromUtf32($entry.Cp)
+  Assert-Rc "Get-GwtWidth：$($entry.Name) 應為 $($entry.W) 欄" $entry.W (Width $ch)
+}
+Assert-Rc '夾在 ASCII 中間：a⚡b 為 4 欄' 4 (Width "a$([char]0x26A1)b")
+Assert-Rc '連續的寬符號：⚡ 三個為 6 欄' 6 (Width ([string][char]0x26A1 * 3))
+Assert-Rc '寬符號與 CJK 混用：中⚡文⌚ 為 8 欄' 8 (Width "中$([char]0x26A1)文$([char]0x231A)")
+Assert-Rc '上色字串裡的寬符號：去掉跳脫序列後才算寬度' 2 (Width (Strip "$e[36m$([char]0x26A1)$e[0m"))
+
+# 含寬符號的長字串，截斷後不能超過預算（每個 ⚡ 佔 2 欄，用字元數算會超過一倍）
+$bolts = 'feature/' + ([string][char]0x26A1 * 30)
+foreach ($budget in 8, 20, 33, 50, 76) {
+  $r = Clip $bolts $budget
+  Assert-True "含 30 個 ⚡ 的分支名截斷到 $budget 欄不超過預算（實際 $(Width $r) 欄）" ((Width $r) -le $budget)
+}
+$r = Clip $bolts 20
+Assert-Contains '截斷處有省略號' '…' $r
+
 # emoji 不能被從代理對中間切開
 $emoji = 'proj-😀😀😀😀😀😀😀😀-end'
 $r = Clip $emoji 12

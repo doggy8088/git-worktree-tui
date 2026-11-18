@@ -9,6 +9,7 @@
 #   many/       40 個 worktree（驗證選單視窗化，清單比終端機高）
 #   longname/   分支與目錄名都很長（驗證每一列都不會折行）
 #   cjk/        目錄與分支名稱都是中文（驗證 UTF-8 解碼與全形字寬度）
+#   emoji/      路徑與分支含寬度為 2 的符號（⚡ ⌚ ✅ ⭐ 與 🔥），驗證欄寬算對、不折行
 #   special/    目錄名稱含 [ ] $ ' & ; ( )（驗證不會被當成萬用字元或變數）
 #   plain/      只有一個 worktree 的儲存庫
 #   outside/    不是 Git 儲存庫的目錄
@@ -87,6 +88,14 @@ Add-Worktree $long (Join-Path $Root 'longname-a-very-long-worktree-directory-nam
 $cjk = New-Repo 'cjk'
 Add-Worktree $cjk (Join-Path $Root 'cjk-購物車') '功能/登入'
 Add-Worktree $cjk (Join-Path $Root 'cjk-修正結帳錯誤') '修正/結帳'
+
+# ---- emoji：路徑與分支含寬度為 2 的符號 -------------------------------------
+# ⚡ ⌚ ✅ ⭐ 是基本多文種平面（BMP）的字元，不是代理對，也不在 CJK 範圍裡，卻佔 2 欄；
+# 🔥 是基本多文種平面以外的 emoji（代理對）。四種寫法都要算對欄寬，選單才不會折行。
+$emoji = New-Repo 'emoji'
+Add-Worktree $emoji (Join-Path $Root 'emoji-⚡-⌚') '⚡/fast-⌚'
+Add-Worktree $emoji (Join-Path $Root 'emoji-✅-done') ('feature/' + ('⚡' * 30))
+Add-Worktree $emoji (Join-Path $Root ('emoji-' + ('⭐' * 12))) '🔥/hot'
 
 # ---- special：目錄名稱含 PowerShell 的特殊字元 ----------------------------
 # [ ] 會被當成萬用字元，$ 會被當成變數，' 會破壞單引號字串，& ; ( ) 是命令分隔與群組。

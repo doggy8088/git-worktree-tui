@@ -63,6 +63,16 @@ $script:Style = @{ Reset = ''; Bar = ''; Branch = ''; Mark = ''; Dim = '' }
 $script:Buf = [System.Text.StringBuilder]::new()
 $script:CSI = [string][char]27 + '['
 $script:AsciiOnly = [regex]::new('^[\x00-\x7F]*$')
+# 寬度為 2 的「基本多文種平面」（BMP）字元：Unicode 的 East Asian Width 是 W（Wide）或 F（Fullwidth）。
+# 不只是 CJK：⚡ ⌚ ⌛ ✅ ❌ ⭐ ⭕ 這類 emoji 符號也在基本多文種平面，卻不在 CJK 範圍裡，一樣佔 2 欄。
+# 只有 CJK 範圍的表（zsh 版是這樣）會把它們當成 1 欄，一列就比算出來的寬，折行之後重繪與收尾
+# 的列數對不上。基本多文種平面以外的字元（代理對，例如 🔥 與 CJK 擴充區）由 Get-GwtWidth 另外處理，一律 2 欄。
+# 測試用另一份獨立的實作與逐字寫死的 Unicode 標準答案對照（tests/pwsh/lib/WidthOracle.ps1）。
+$script:WideBmp = [regex]::new(
+  '[ᄀ-ᅟ⌚⌛〈〉⏩-⏬⏰⏳◽◾☔☕♈-♓♿⚓' +
+  '⚡⚪⚫⚽⚾⛄⛅⛎⛔⛪⛲⛳⛵⛺⛽✅✊✋✨' +
+  '❌❎❓-❕❗➕-➗➰➿⬛⬜⭐⭕⺀-〾ぁ-꓏' +
+  'ꥠ-꥿가-힣豈-﫿︐-︙︰-﹯＀-｠￠-￦]')
 $script:AnsiSgr = [regex]::new("\x1b\[[0-9;]*m")
 
 # -----------------------------------------------------------------------------
@@ -265,34 +275,15 @@ function Remove-GwtAnsi {
 }
 
 # 字串在終端機上的欄寬。純 ASCII 走快速路徑（每次按鍵都要重算，PowerShell 的
-# 逐字元迴圈很慢，不能每列都跑）。代理對（emoji 等）算兩欄。
+# 逐字元迴圈很慢，不能每列都跑）。
+#
+# 每個 UTF-16 單位算 1 欄：基本多文種平面以外的字元（代理對，例如 🔥 與 CJK 擴充區）是兩個單位，所以自然
+# 是 2 欄；再為「基本多文種平面裡寬度為 2 的字元」（CJK、全形、⚡ ⌚ ✅ 這類 emoji 符號）各加 1 欄。
+# 用一個正規表示式一次掃完，不逐字元跑迴圈。
 function Get-GwtWidth {
   param([string]$Text)
   if ($script:AsciiOnly.IsMatch($Text)) { return $Text.Length }
-  $w = 0
-  $n = $Text.Length
-  for ($i = 0; $i -lt $n; $i++) {
-    $c = $Text[$i]
-    if ([char]::IsHighSurrogate($c) -and ($i + 1 -lt $n) -and [char]::IsLowSurrogate($Text[$i + 1])) {
-      $w += 2
-      $i++
-      continue
-    }
-    $code = [int]$c
-    if (($code -ge 0x1100 -and $code -le 0x115F) -or
-      ($code -ge 0x2E80 -and $code -le 0xA4CF) -or
-      ($code -ge 0xAC00 -and $code -le 0xD7A3) -or
-      ($code -ge 0xF900 -and $code -le 0xFAFF) -or
-      ($code -ge 0xFE30 -and $code -le 0xFE4F) -or
-      ($code -ge 0xFF00 -and $code -le 0xFF60) -or
-      ($code -ge 0xFFE0 -and $code -le 0xFFE6)) {
-      $w += 2
-    }
-    else {
-      $w += 1
-    }
-  }
-  return $w
+  return $Text.Length + $script:WideBmp.Matches($Text).Count
 }
 
 # 把過長的字串從中截斷成 budget 欄寬：保留頭 1/3、尾 2/3，中間放省略號。

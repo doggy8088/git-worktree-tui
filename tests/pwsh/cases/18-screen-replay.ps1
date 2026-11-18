@@ -75,6 +75,42 @@ $r = Get-Rows "abc😀d" -Cols 4
 Assert-Eq 'emoji 只剩一欄放不下時整個換行（不會切成半個）：第一列' 'abc' $r[0]
 Assert-Eq 'emoji 整個換到下一列：下一列' '😀d' $r[1]
 
+# --- 蓋在全形字的一半上面（Copilot：蓋寫全形字會留下舊的儲存格）------------------------------------
+# 全形字佔兩格（左半存字、右半存 $null）。蓋掉其中一半，另一半必須跟著清成空白，跟真實終端機一樣；
+# 否則殘留的半個會讓整列欄位錯開，後面的斷言（折行、殘影）就不可靠。
+$r = Get-Rows "a中b`r${e}[2CX" -Cols 10
+Assert-Eq '蓋在全形字的右半上：整個全形字清成空白，新的字寫在原位' 'a Xb' $r[0]
+$r = Get-Rows "a中b`r${e}[1CX" -Cols 10
+Assert-Eq '蓋在全形字的左半上：右半跟著清成空白' 'aX b' $r[0]
+$r = Get-Rows "中文`r${e}[1C字" -Cols 10
+Assert-Eq '全形字蓋在兩個全形字的交界上：兩邊各剩的半個都清掉' ' 字' $r[0]
+$r = Get-Rows "a中b`r${e}[2C${e}[K" -Cols 10
+Assert-Eq 'ESC[K 從全形字的右半開始清：整個全形字清掉' 'a' $r[0]
+$r = Get-Rows "a中b`r${e}[1C${e}[1K" -Cols 10
+Assert-Eq 'ESC[1K 清到全形字的左半為止：右半也清掉' '   b' $r[0]
+$r = Get-Rows "a中b`r${e}[2C${e}[1X" -Cols 10
+Assert-Eq 'ESC[1X 清掉全形字的右半：左半也清掉，後面的字不動' 'a  b' $r[0]
+$r = Get-Rows "a中b`r${e}[2C${e}[J" -Cols 10
+Assert-Eq 'ESC[J 從全形字的右半開始清：整個全形字清掉' 'a' $r[0]
+# 整列都被蓋掉（gwt 的畫法：\r、ESC[2K、重寫）不受影響
+$r = Get-Rows "中文字`r${e}[2Kabc" -Cols 10
+Assert-Eq '整列清掉再重寫：沒有殘留' 'abc' $r[0]
+
+# --- 寬度對照 Unicode 的標準答案（與 gwt 的 Get-GwtWidth 是兩份各自的實作，各自對照同一份清單）-------------
+. "$env:GWT_ROOT\tests\pwsh\lib\WidthOracle.ps1"
+foreach ($entry in $script:WidthOracle) {
+  $ch = [char]::ConvertFromUtf32($entry.Cp)
+  Assert-Rc "重播器的 Get-CellWidth：$($entry.Name) 應為 $($entry.W) 欄" $entry.W (Get-CellWidth $ch)
+}
+# 寬符號放不下時整個換行，跟 CJK 一樣（⚡ 是基本多文種平面的字元，不是代理對）
+$bolt = [string][char]0x26A1
+$r = Get-Rows "ab${bolt}c" -Cols 4
+Assert-Eq '⚡ 剛好 4 欄放得下：第一列' "ab${bolt}" $r[0]
+Assert-Eq '⚡ 剛好 4 欄放得下：後面的 c 換行' 'c' $r[1]
+$r = Get-Rows "abc${bolt}d" -Cols 4
+Assert-Eq '⚡ 只剩一欄放不下：整個換到下一列（第一列）' 'abc' $r[0]
+Assert-Eq '⚡ 只剩一欄放不下：整個換到下一列' "${bolt}d" $r[1]
+
 # --- 該忽略的序列 -----------------------------------------------------------------------------
 $r = Get-Rows "${e}[1;30;46mab${e}[0m"
 Assert-Eq 'SGR（顏色）不佔欄位' 'ab' $r[0]

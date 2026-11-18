@@ -47,6 +47,11 @@ PowerShell 版開發與 code review 時，發現 `gwt.zsh` 的程式碼有下面
    `_GWT_PENDING_KEY`，之後數字有效就直接 `return 0`，沒人看那個按鍵。`_gwt_pick_number` 回來後要先檢查它。
 4. **很窄的終端機會折行。** 一列至少要 26 欄，而寬度下限是 24（`(( w < 24 )) && w=24`）；放不下時要依序省略
    commit、分支，不能硬把路徑夾到 4 欄。
+5. **欄寬表缺了「基本多文種平面裡寬度為 2 的 emoji 符號」。** `_gwt_swidth` 只有 CJK 與全形的範圍，`⚡ ⌚ ✅ ⭐`
+   （U+26A1、U+231A、U+2705、U+2B50 等，East Asian Width 是 W）被當成 1 欄；分支或路徑含這些符號時，在把它們
+   畫成 2 欄的終端機上一列會比算出來的寬而折行。PowerShell 版已補上完整的範圍（[design-notes 17.12](design-notes.md)），
+   `site/assets/app.js` 的示範選單如果也算欄寬，同樣要看。zsh 的 `[$'⺀'-$'꓏']` 這種字元範圍比對要補的範圍
+   不少，建議照 `tests/pwsh/lib/WidthOracle.ps1` 的逐字清單先寫測試。
 
 每一項都要補測試：1 用「按 `9` 的耗時」，2 用 PTY 送 `9\n`，3 要先把 PTY 的 `ISIG` 關掉再送 `1\x03`，
 4 用 25 欄的 PTY 重播畫面檢查沒有重複的列。

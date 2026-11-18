@@ -197,6 +197,48 @@ $oddDir = Join-Path $sb.Root "工具 `$HOME's"
 [void](Invoke-Installer @('-Dir', $oddDir, '-ProfilePath', $sb.Profile))
 Assert-True '[中文與 $、單引號的路徑、Big5] profile 載入後從正確的路徑載入' (Test-ProfileImports $sb.Profile (Join-Path $oddDir 'gwt.psm1'))
 
+# --- 安裝目錄含萬用字元（[ ]）：profile 的 import 不能被 PowerShell 當成樣式展開 ------------------------
+# Import-Module 會先把路徑當萬用字元展開：gwt[12] 這個目錄名稱會被解讀成「gwt1 或 gwt2」，旁邊剛好有
+# gwt1\gwt.psm1 時，profile 默默載入隔壁那一個——安裝宣告成功，之後每個終端機跑的卻是別的模組。
+# 不能看 (Get-Module gwt).Path（對跳脫過的萬用字元目錄它會顯示錯的路徑），要看「實際跑起來的是誰」：
+# 真的 gwt 回報版本，誘餌模組只會印 DECOY。（Windows 的檔名不能含 * 與 ?，所以只有 [ ] 是實際會遇到的。）
+function Get-RunningGwt {
+  param([string]$ProfilePath)
+  $out = & $pwshExe -NoProfile -NonInteractive -Command ". '$ProfilePath'; 'WHO=' + (gwt --version)" 2>&1
+  $m = [regex]::Match((@($out | ForEach-Object { "$_" }) -join "`n"), '(?m)^WHO=(.*?)\s*$')
+  if ($m.Success) { return $m.Groups[1].Value }
+  return '(import failed)'
+}
+$realVersion = Invoke-InGwt { $script:GwtVersion }
+$wildCases = @(
+  @{ Dir = 'gwt[12]'; Decoy = 'gwt1' }
+  @{ Dir = 'a[1]\gwt'; Decoy = 'a1\gwt' }
+  @{ Dir = 'x[a-c]y'; Decoy = 'xby' }
+)
+foreach ($wc in $wildCases) {
+  foreach ($kind in 'UTF-8', 'Big5（import 要純 ASCII）') {
+    $sb = New-Sandbox
+    $decoy = Join-Path $sb.Root $wc.Decoy
+    New-Item -ItemType Directory -Path $decoy -Force | Out-Null
+    [System.IO.File]::WriteAllText((Join-Path $decoy 'gwt.psm1'), "function gwt { 'DECOY' }`nExport-ModuleMember -Function gwt`n", $utf8)
+    $wild = Join-Path $sb.Root $wc.Dir
+    $original = if ($kind -like 'Big5*') { $cases['非 UTF-8 的舊式 ANSI（Big5）'] } else { $cases['LF、有結尾換行'] }
+    [System.IO.File]::WriteAllBytes($sb.Profile, $original)
+    $tag = "[萬用字元目錄 $($wc.Dir)、$kind]"
+
+    $i = Invoke-Installer @('-Dir', $wild, '-ProfilePath', $sb.Profile)
+    Assert-Rc "$tag 安裝回傳 0" 0 $i.Rc
+    Assert-True "$tag 模組真的裝進那個目錄" (Test-Path -LiteralPath (Join-Path $wild 'gwt.psm1'))
+    Assert-Eq "$tag profile 載入後跑起來的是剛裝的 gwt，不是隔壁的誘餌" "gwt $realVersion" (Get-RunningGwt $sb.Profile)
+
+    $u = Invoke-Installer @('-Dir', $wild, '-ProfilePath', $sb.Profile, '-Uninstall')
+    Assert-Rc "$tag 移除回傳 0" 0 $u.Rc
+    Assert-True "$tag 移除只清掉自己的目錄" (-not (Test-Path -LiteralPath $wild))
+    Assert-True "$tag 移除沒有誤刪隔壁的誘餌目錄" (Test-Path -LiteralPath (Join-Path $decoy 'gwt.psm1'))
+    Assert-Eq "$tag 移除後 profile 逐位元組還原" ([Convert]::ToBase64String($original)) (Get-B64 $sb.Profile)
+  }
+}
+
 # --- 沒有裝過就移除：什麼都不動 ---------------------------------------------------------
 $sb = New-Sandbox
 [System.IO.File]::WriteAllBytes($sb.Profile, $cases['沒有結尾換行'])

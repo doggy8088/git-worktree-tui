@@ -19,11 +19,24 @@ function Run-Menu {
     Import-Module (Join-Path $env:GWT_ROOT 'gwt.psm1')
     Set-Location -LiteralPath (Join-Path $env:GWT_FIXTURE $env:GWT_TEST_FIXTURE_NAME)
     "RUN-1"
+    # 主控台自己回報的游標列：選單畫完之後游標比畫之前往下移了幾列。這是「實際佔了幾個實體行」，
+    # 由真的 conhost 決定，不經過任何字元寬度表——選單有一列被折成兩行，這個差就會多 1。
+    $top0 = [Console]::CursorTop
     gwt
+    $top1 = [Console]::CursorTop
     "RESULT-1 rc=$LASTEXITCODE ok=$? pwd=$((Get-Location).Path)"
+    "TOPS=$top0,$top1"
   }
   $steps = New-RunSteps 1 $Keys
   Invoke-InConsole -Script $scenario -Steps $steps -Rows $Rows -Cols $Cols
+}
+
+# 選單實際佔用的主控台行數（取消後選單留在畫面上，游標停在最後一列的下一行）。取不到回傳 -1。
+function Get-PhysicalLines {
+  param($Run)
+  $m = [regex]::Match($Run.Screen, '(?m)^TOPS=(\d+),(\d+)\s*$')
+  if (-not $m.Success) { return -1 }
+  return [int]$m.Groups[2].Value - [int]$m.Groups[1].Value
 }
 
 # --- shop：5 筆，寬度夠，主控台 30 列
@@ -64,6 +77,7 @@ foreach ($cols in 25, 50, 60, 80) {
   Assert-Screen "$cols 欄：沒有重複的列" '^DUPLICATES=-$' $r.Screen
   Assert-Screen "$cols 欄：游標在第 2 筆" '^SELECTED=2$' $r.Screen
   Assert-Screen "$cols 欄：確實出現了省略號（測試有效）" '…' $r.Screen
+  Assert-Rc "$cols 欄：選單實際佔 1 + 5 = 6 個主控台行（主控台自己回報的游標列）" 6 (Get-PhysicalLines $r)
   # 直接數自動換行。只重播到 gwt 結束為止：之後場景程式自己印的 RESULT-1 那一行（含很長的路徑）
   # 在窄視窗裡本來就會換行，那不是選單的問題。
   $cut = $r.Output.IndexOf('RESULT-1', [System.StringComparison]::Ordinal)
@@ -78,10 +92,25 @@ foreach ($cols in 40, 60, 100) {
   Assert-Screen "cjk $cols 欄：3 筆各佔一列" '^ITEM_ROWS=3$' $r.Screen
   Assert-Screen "cjk $cols 欄：沒有重複的列" '^DUPLICATES=-$' $r.Screen
   Assert-Screen "cjk $cols 欄：游標在第 2 筆" '^SELECTED=2$' $r.Screen
+  Assert-Rc "cjk $cols 欄：選單實際佔 1 + 3 = 4 個主控台行（主控台自己回報的游標列）" 4 (Get-PhysicalLines $r)
   $cut = $r.Output.IndexOf('RESULT-1', [System.StringComparison]::Ordinal)
   $menuOnly = Get-ScreenReplay -Text $r.Output.Substring(0, $cut) -Rows 20 -Cols $cols
   Assert-Screen "cjk $cols 欄：選單本身沒有任何一列被主控台折行（WRAPS=0）" '^WRAPS=0$' $menuOnly
 }
+# --- emoji：寬度為 2 的符號（⚡ ⌚ ✅ ⭐）與代理對 emoji（🔥）。
+# 這裡不能用「把 conhost 的輸出重播成畫面」來判斷有沒有折行：重播器得自己決定 ⚡ 佔幾欄，而不同的主控台
+# 對這些符號的看法不一樣——Unicode 與 Windows Terminal 是 2 欄，這台 Windows 10 的 conhost（較舊的
+# Unicode 表）是 1 欄；重播器認定的寬度和 conhost 排版時用的寬度對不上，就會誤判折行（實測：畫面
+# 看起來完全正常，WRAPS 卻是 2）。改問主控台自己：選單畫完之後游標往下移了幾列。有任何一列被折成兩行，
+# 這個數字就會多 1，與任何寬度表無關。
+# gwt 一律當成 2 欄是安全的方向：在把它們畫成 1 欄的主控台上，一列只是短一點；反過來假設 1 欄，
+# 在畫成 2 欄的主控台（Windows Terminal）上就會折行。
+foreach ($cols in 40, 60, 80, 100) {
+  $r = Run-Menu 'emoji' @($k.Down, 'q') 20 $cols
+  Assert-True "emoji $cols 欄：沒有逾時" ((-not $r.TimedOut) -and ($null -eq $r.WaitFailed))
+  Assert-Rc "emoji $cols 欄：4 筆實際佔 1 + 4 = 5 個主控台行（沒有任何一列被 conhost 折行）" 5 (Get-PhysicalLines $r)
+}
+
 $r = Run-Menu 'cjk' @($k.Down, 'q') 20 100
 Assert-Screen '中文分支名稱與路徑正確顯示' '功能/登入|修正/結帳' $r.Screen
 Assert-Screen '中文目錄名稱正確顯示' 'cjk-購物車|cjk-修正結帳錯誤|…' $r.Screen
