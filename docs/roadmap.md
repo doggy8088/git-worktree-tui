@@ -30,6 +30,14 @@ gwt fea<TAB>   # 補出符合的 worktree 路徑
 
 目前順序完全照 Git 的輸出（依路徑排序）。可以加 `GWT_SORT=path|recent|branch`，用 `zstat` 讀目錄的 mtime 做「最近用過」排序。
 
+### 5a. zsh 版：多位數編號的第一位數不必等待
+
+[design-notes 第 10 節](design-notes.md) 寫「若已輸入的數字再加一位就會超過總數，立刻結束等待」，但 `gwt.zsh` 的
+`_gwt_pick_number` 是讀到第二位數「之後」才判斷，所以第一位數一律要等滿 `GWT_DIGIT_TIMEOUT`：12 筆時按 `9`
+明明不可能再接第二位數，仍然白等 0.4 秒。PowerShell 版（`Invoke-GwtPickNumber`）已經把判斷放到等待之前。
+zsh 版照做只要在 `while` 迴圈開頭加一行 `(( 10#$digits * 10 > _GWT_COUNT )) && break`，再補一個測試：
+`12` 筆時按 `9` 應該在遠小於 timeout 的時間內跳轉。
+
 ## 中期（需要設計討論）
 
 ### 6. 整合 fzf
@@ -81,7 +89,15 @@ gwt() {
 
 ### 12. Windows
 
-PowerShell 版本的等價物是 `Set-Location`，但 ANSI 序列、終端機模式、按鍵讀取都要重寫。目前沒有計畫。
+**PowerShell 7（`pwsh`）版已完成**：`gwt.psm1` 與 `install.ps1`，設計與踩過的坑見
+[design-notes 第 17 節](design-notes.md)。還沒做的：
+
+- **Windows PowerShell 5.1**：內建的藍色那個。主控台預設不吃 VT 序列、預設編碼是 ANSI、沒有三元運算子與 `&&`，
+  不是改幾行的事；目前明確不支援（安裝腳本在 5.1 裡會請使用者改用 `pwsh`）。
+- **發佈到 PowerShell Gallery**：`Install-Module gwt`。需要補 `gwt.psd1` 清單檔與版本同步。
+- **macOS／Linux 的 `pwsh`**：程式本身沒有 Windows 專屬 API，理論上能跑，但沒驗證也沒有 CI。
+  要支援的話先把 `tests/pwsh/run.ps1` 掛上 ubuntu／macos 的 CI 看哪些測試會紅。
+- **`cmd.exe`、fish**：沒有計畫。Git Bash 底下的 zsh／bash 見第 11 項。
 
 ## 明確不做
 

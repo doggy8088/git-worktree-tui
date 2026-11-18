@@ -442,12 +442,17 @@
   document.querySelectorAll('[data-copy]').forEach(function (button, index) {
     button.addEventListener('click', function () {
       var text = button.getAttribute('data-copy').replace(/&amp;/g, '&');
-      var status = states[index] || states[0];
+      // 同一區塊可以有好幾顆複製鈕（zsh、PowerShell），狀態列用同區塊的那一條
+      var section = button.closest('section');
+      var status = (section && section.querySelector('[data-copy-state]')) || states[index] || states[0];
 
-      // 沒有剪貼簿權限時（例如 file:// 或使用者拒絕），直接把指令選取起來
+      // 沒有剪貼簿權限時（例如 file:// 或使用者拒絕），直接把「這顆鈕要複製的」指令選取起來
       function selectCommand() {
-        var scope = button.closest('section') || document;
-        var target = scope.querySelector('.install-code code') || scope.querySelector('.install-cmd');
+        var scope = section || document;
+        var target = null;
+        scope.querySelectorAll('.install-code code, .install-cmd').forEach(function (el) {
+          if (!target && el.textContent.trim() === text) target = el;
+        });
         if (!target) return false;
         var range = document.createRange();
         range.selectNodeContents(target);

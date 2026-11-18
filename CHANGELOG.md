@@ -6,6 +6,21 @@
 
 ### 新增
 
+- **PowerShell 7（`pwsh`）版**：`gwt.psm1`，只匯出 `gwt` 一個命令。行為、按鍵、設定項與 zsh 版對齊：
+  方向鍵／`j`／`k`／數字鍵／`/` 模糊搜尋、`Esc` 與 `Ctrl+C`、`--list`／`--help`／`--version`、視窗化、
+  欄寬截斷、`GWT_LANG` 等環境變數。取消與錯誤的結束狀態同時放在 `$LASTEXITCODE`（0／1／2／130）與 `$?`
+  （非 0 時為 false），所以 `gwt && 下一個指令` 在取消之後不會繼續跑，取消時也不印任何訊息。
+  切換後 `cd -` 仍回到切換之前的目錄。路徑與分支含中文、空白、`[ ] $ ' &` 都能正確切換。
+  細節與每個決定的理由見 [design-notes 第 17 節](docs/design-notes.md)。
+- **`install.ps1` 與 PowerShell 一行安裝**：`irm https://gwt.gh.miniasp.com/install.ps1 | iex`。把
+  `gwt.psm1` 放到 `~\.gwt\`，並在 `$PROFILE.CurrentUserAllHosts`（VS Code 的終端機也會載入）加入可移除的
+  區塊；重複執行不會重複加行，移除時 profile 逐位元組還原。支援 `-Version`、`-Dir`、`-ProfilePath`、
+  `-Uninstall`，以及給 `iex` 用的 `GWT_VERSION`／`GWT_INSTALL_DIR`／`GWT_PROFILE`。沒指定版本而最新的
+  release 還沒有 PowerShell 版時，會明說並改裝 `main`。不會改執行原則，只會在 profile 載不進來時警告。
+- README 與官方網站加上 PowerShell 的安裝指令（各有自己的複製按鈕）、環境變數與結束狀態的 PowerShell 寫法。
+- 測試：新增 `tests/pwsh/`（22 個測試檔：14 個單元、5 個以測試掛鉤餵按鍵並重播畫面、3 個在 ConPTY 真主控台裡送
+  真按鍵），只需要 `pwsh` 7 與 git，不需要 bash、python 或 Pester。`make test-pwsh` 或
+  `pwsh tests/pwsh/run.ps1`。CI 新增 `windows-latest` 工作。
 - 選單內按 `/` 進入模糊搜尋：以子序列比對分支名稱與路徑的最後一層目錄，
   `flogin` 可以找到 `feature/login`。查詢含空白時切成多個詞，每個詞都要命中（AND）。
 - 搜尋結果依相關度排序（連續命中、字首與分隔符後命中優先），同分時維持 Git 的順序。

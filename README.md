@@ -5,7 +5,7 @@
 
 網站：<https://gwt.gh.miniasp.com>（示範選單可以直接用鍵盤操作，按 `/` 也能模糊搜尋）
 
-用 zsh 寫的 Git Worktree 互動式切換工具：一個指令列出所有 worktree，用方向鍵、`j`／`k` 或數字鍵選好，按下 Enter 就直接 `cd` 過去。
+Git Worktree 互動式切換工具，有 zsh 版與 PowerShell 7（`pwsh`）版：一個指令列出所有 worktree，用方向鍵、`j`／`k` 或數字鍵選好，按下 Enter 就直接 `cd`（PowerShell 裡是 `Set-Location`）過去。
 
 ```
 請選擇 Worktree (↑/↓ 移動, Enter 確認, 按 1-5 直接跳轉, q/Esc 取消)：
@@ -26,14 +26,24 @@ Worktree 一多，真正花時間的從來不是 Git 指令，而是「`git work
 
 ## 需求
 
+任選一種 shell：
+
 - zsh 5.8 以上（macOS 內建的 zsh、Homebrew 安裝的 zsh 都可以）
+- PowerShell 7.0 以上（`pwsh`，在 Windows 上開發與驗證；Windows 內建的 Windows PowerShell 5.1 不支援，到 <https://aka.ms/powershell> 安裝 PowerShell 7）
+
+另外都需要：
+
 - Git 2.7 以上（`git worktree` 從 2.5 開始提供，`list --porcelain` 從 2.7 開始）
 
-刻意只依賴 zsh 與 git，沒有 fzf、沒有額外的套件管理器。
+刻意只依賴 shell 與 git，沒有 fzf、沒有額外的套件管理器。
 
 ## 安裝
 
-### 方式一：一行安裝（推薦）
+用 zsh（macOS、Linux）看 [zsh](#zsh)；用 PowerShell 7 的 Windows 使用者直接跳到 [PowerShell 7](#powershell-7)。
+
+### zsh
+
+#### 方式一：一行安裝（推薦）
 
 ```sh
 curl -fsSL https://gwt.gh.miniasp.com/install.sh | bash
@@ -63,7 +73,7 @@ source ~/.zsh/gwt.zsh
 
 只有這一段是腳本產生的，其餘內容原封不動；重複執行不會重複加行。移除時執行 `bash install.sh --uninstall`，或 `make install` / `make uninstall`。
 
-### 方式二：手動
+#### 方式二：手動
 
 把 `gwt.zsh` 放到你喜歡的位置，在 `~/.zshrc` 加一行：
 
@@ -73,7 +83,7 @@ source ~/path/to/gwt.zsh
 
 再開一個新的終端機，或執行 `source ~/.zshrc`。
 
-### 方式三：zsh plugin manager
+#### 方式三：zsh plugin manager
 
 `gwt.plugin.zsh` 是給 oh-my-zsh 自訂 plugin、antigen、zinit、sheldon、zplug 這類工具用的進入點，它只負責 `source` 同目錄的 `gwt.zsh`。
 
@@ -85,6 +95,82 @@ git clone https://github.com/doggy8088/git-worktree-tui.git \
 ```
 
 然後在 `~/.zshrc` 的 `plugins=(...)` 加入 `gwt`。
+
+### PowerShell 7
+
+給 Windows 上的 PowerShell 7（`pwsh`）。要用 PowerShell 7，不是 Windows 內建的藍色 Windows PowerShell 5.1；在 5.1 裡執行安裝腳本只會得到一行請你改用 `pwsh` 的訊息，不會安裝任何東西。
+
+#### 方式一：一行安裝（推薦）
+
+```powershell
+irm https://gwt.gh.miniasp.com/install.ps1 | iex
+```
+
+裝完會直接載入到目前的視窗，馬上就能打 `gwt`；之後開的每個 PowerShell 7 視窗（包含 VS Code 的終端機）也都會載入。
+
+要固定版本，`iex` 沒辦法帶參數，所以把腳本包成 scriptblock，或先設環境變數：
+
+```powershell
+& ([scriptblock]::Create((irm https://gwt.gh.miniasp.com/install.ps1))) -Version vX.Y.Z
+
+# 或
+$env:GWT_VERSION = 'vX.Y.Z'; irm https://gwt.gh.miniasp.com/install.ps1 | iex
+```
+
+`vX.Y.Z` 換成想固定的 release 標籤。PowerShell 版是 v0.1.0 之後才加入的，所以 v0.1.0 本身沒有它；沒指定版本時，腳本會看最新的 release，如果它還不含 PowerShell 版（目前就是這種情況），會明說並改安裝 `main` 分支的最新版。
+
+移除：
+
+```powershell
+& ([scriptblock]::Create((irm https://gwt.gh.miniasp.com/install.ps1))) -Uninstall
+```
+
+如果 `gwt.gh.miniasp.com` 連不上，同一支腳本也放在 GitHub：
+
+```powershell
+irm https://raw.githubusercontent.com/doggy8088/git-worktree-tui/main/install.ps1 | iex
+```
+
+在 clone 下來的專案裡也可以直接跑（會用本地的 `gwt.psm1`，不連網）：
+
+```powershell
+pwsh -File install.ps1              # 安裝
+pwsh -File install.ps1 -Uninstall   # 移除
+```
+
+腳本會把 `gwt.psm1` 放到 `~\.gwt\gwt.psm1`，並在 `$PROFILE.CurrentUserAllHosts`（`profile.ps1`，所有 PowerShell 主機共用，所以 VS Code 的終端機也會載入）加入：
+
+```powershell
+# >>> gwt (git-worktree-tui) >>>
+Import-Module "$HOME\.gwt\gwt.psm1"
+# <<< gwt (git-worktree-tui) <<<
+```
+
+只有這一段是腳本產生的，其餘內容原封不動（編碼、BOM、換行都保持原樣）；重複執行不會重複加行，移除時會把這一段拿掉，並刪掉 `gwt.psm1`。profile 裡若還有別行也在載入 `gwt.psm1`，腳本會提醒你，但不會動它。腳本不會改 PowerShell 的執行原則；如果目前是 `Restricted` 或 `AllSigned`，它會警告開新視窗時 profile 不會被載入，並告訴你怎麼改（只影響你自己的帳號）：
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+參數（用 `iex` 時沒有參數可用，改設右邊的環境變數；參數優先）：
+
+| 參數           | 環境變數          | 說明                                                         |
+| -------------- | ----------------- | ------------------------------------------------------------ |
+| `-Version`     | `GWT_VERSION`     | 要安裝的 release 標籤                                        |
+| `-Dir`         | `GWT_INSTALL_DIR` | 安裝目錄，預設 `~\.gwt`                                      |
+| `-ProfilePath` | `GWT_PROFILE`     | 要寫入載入設定的 profile，預設 `$PROFILE.CurrentUserAllHosts` |
+| `-Uninstall`   |                   | 移除                                                         |
+| `-Help`        |                   | 顯示說明                                                     |
+
+#### 方式二：手動
+
+把 `gwt.psm1` 放到你喜歡的位置，在 `$PROFILE.CurrentUserAllHosts` 加一行：
+
+```powershell
+Import-Module C:\path\to\gwt.psm1
+```
+
+再開一個新的終端機，或直接在目前的視窗執行同一行。
 
 ## 用法
 
@@ -172,7 +258,7 @@ gwt --list feature | head -1
 
 ## 設定
 
-全部都是環境變數，可以 `export` 在 `~/.zshrc`，或 source 之後再改。預設值如下：
+全部都是環境變數。zsh 可以 `export` 在 `~/.zshrc`，或 source 之後再改；PowerShell 用 `$env:名稱 = '值'` 設定（要永久生效就寫進 `$PROFILE`）。預設值如下：
 
 | 變數                            | 預設  | 說明                                                     |
 | ------------------------------- | ----- | -------------------------------------------------------- |
@@ -193,6 +279,16 @@ GWT_CLEAR_ON_EXIT=0
 GWT_FILTER_CASE_INSENSITIVE=0
 ```
 
+PowerShell：
+
+```powershell
+$env:GWT_LANG = 'en'
+$env:GWT_CLEAR_ON_EXIT = '0'
+$env:GWT_FILTER_CASE_INSENSITIVE = '0'
+```
+
+`GWT_ESC_TIMEOUT` 在 PowerShell 版用不到：zsh 要等一小段時間才分得出「單獨一個 Esc」和方向鍵送來的 `Esc [ A`，而 PowerShell 的 `[Console]::ReadKey` 直接回報「這是方向鍵」或「這是 Esc」，不需要等。設了也不會有作用。
+
 ## 結束碼
 
 | 情況                       | 結束碼 |
@@ -205,6 +301,15 @@ GWT_FILTER_CASE_INSENSITIVE=0
 | 需要互動式終端機時卻沒有   | `1`    |
 | `Ctrl+C` 中斷              | `130`  |
 | 未知的選項                 | `2`    |
+
+**PowerShell** 的函式沒有「結束碼」，「失敗」看的是 `$?`，所以兩邊都給：同一組數字放在 `$LASTEXITCODE`，而且只要不是 `0`，`$?` 就一定是 `$false`。這樣 `gwt && 下一個指令` 在你按 `q`／`Esc`、`Ctrl+C` 之後不會繼續跑，跟 zsh 版一致：
+
+```powershell
+gwt && Write-Host '已切換'      # 取消的話不會印
+gwt; $LASTEXITCODE              # 取消 = 1，Ctrl+C = 130
+```
+
+取消與 `Ctrl+C` 不會印出任何訊息，也不會在 `$Error` 留下紀錄；找不到符合、不在儲存庫、未知選項這類失敗，則會把訊息寫進錯誤串流（可以用 `2>$null` 隱藏）。每次執行結束時 `$LASTEXITCODE` 一定會被設成上表的值，不會殘留 `git` 的結果碼。
 
 ## 與原文的差異
 
@@ -227,10 +332,12 @@ GWT_FILTER_CASE_INSENSITIVE=0
 
 ## 已知限制
 
-- **只能在 zsh 使用**：用到 `read -k`（讀單一按鍵）與從 1 開始的陣列索引。要在 bash 用需要改寫成 `read -n 1` 與 0 起算索引。
+- **只支援 zsh 與 PowerShell 7**：zsh 版用到 `read -k`（讀單一按鍵）與從 1 開始的陣列索引，要在 bash 用需要改寫成 `read -n 1` 與 0 起算索引；PowerShell 版需要 PowerShell 7（`pwsh`），Windows PowerShell 5.1 不支援。fish 同樣沒有。
+- **PowerShell 版有幾個短選項會被 PowerShell 先吃掉**：`-d`、`-e`、`-i`、`-o`、`-p`、`-w` 這類短選項會被 PowerShell 當成共同參數（`-Debug`、`-ErrorAction`、`-InformationAction`、`-OutVariable`、`-PipelineVariable`、`-WarningAction`…）的縮寫，`gwt` 根本收不到。gwt 本身沒有這些選項，所以不影響使用；只是打錯成這幾個字母時，看到的會是 PowerShell 的錯誤訊息，結束碼也不是 `2`。`-l`、`-h`、`-V` 與長選項（`--list`、`--help`、`--version`）不受影響。
 - **清單比畫面高時只看得到一段**：選單會顯示一個符合終端機高度的視窗，並標示目前範圍；要一次看到全部就得用 `gwt --list` 或把終端機拉高。
 - **選單開著時改變視窗大小不會重排**：寬高都在啟動時量一次，選單顯示期間調整視窗大小不會重新排版（下次執行才會生效）。
-- **多位數編號有等待感**：超過 9 筆時，按單一數字要等 `GWT_DIGIT_TIMEOUT` 才知道你是不是要按第二位數。
+- **多位數編號有等待感**：超過 9 筆時，按單一數字要等 `GWT_DIGIT_TIMEOUT` 才知道你是不是要按第二位數。PowerShell 版只在後面「還可能接第二位數」時才等：12 筆時按 `9`（`90` 已經超過總數）或 `3` 會立刻跳轉，只有 `1` 要等。
+- **PowerShell 版只在 Windows 上驗證過**：測試與實際操作都在 Windows 10 的 PowerShell 7 上做；macOS／Linux 的 `pwsh` 理論上能跑（不依賴任何 Windows 專屬 API，除了測試用的 ConPTY），但沒有驗證，也沒有 CI。Windows Terminal、舊的 conhost 視窗與 VS Code 終端機的實際按鍵手感也沒有逐一驗證，見 [docs/design-notes.md](docs/design-notes.md) 第 17 節末的檢查清單。
 - **互動搜尋只比對分支與目錄名稱**：`/` 搜尋不看完整路徑，避免共同前綴干擾；命令列關鍵字（`gwt fix`）則仍然比對「路徑 + 分支」整串。
 - **搜尋不支援正規表示式**：只有子序列比對與多詞 AND。需要更複雜的查詢可以考慮接 `fzf`。
 - **不會自動清理失效的 worktree**：目錄被砍掉但沒 `git worktree prune` 的話，清單裡還是會出現。
@@ -240,6 +347,7 @@ GWT_FILTER_CASE_INSENSITIVE=0
 ```sh
 make help      # 列出所有指令
 make test      # 執行全部測試（單元 + PTY 互動）
+make test-pwsh # 執行 PowerShell 版測試（需要 pwsh 7）
 make lint      # zsh -n 語法檢查 + python 編譯檢查
 make demo      # 建一個含 5 個 worktree 的示範儲存庫
 make site      # 在本機預覽網站（http://localhost:8765）
@@ -270,14 +378,37 @@ GWT_ROOT=$PWD GWT_FIXTURE=/tmp/fx bash tests/fixtures/build.sh /tmp/fx
 python3 tests/lib/ptydrive.py --keys '\x03' --out /tmp/out.bin -- zsh -f tests/cases-pty/08-ctrl-c.zsh
 ```
 
+### PowerShell 版的測試
+
+只需要 `pwsh` 7 與 git，不需要 bash、python 或 Pester（Windows 內建的 Pester 3.4 與現在的語法不相容，而且這個專案的原則是不加依賴）：
+
+```powershell
+pwsh tests/pwsh/run.ps1                  # 全部：語法檢查 + 單元 + 按鍵驅動 + 真主控台
+pwsh tests/pwsh/run.ps1 -Filter search   # 只跑檔名含 search 的測試
+pwsh tests/pwsh/run.ps1 -SkipConsole     # 略過需要 ConPTY 的測試
+pwsh tests/pwsh/run.ps1 -Keep            # 保留暫存目錄，方便失敗時進去追
+```
+
+測試分三類，每個檔案都在獨立的 `pwsh -NoProfile` 處理序裡執行（所以你 `$PROFILE` 裡已經載入的 gwt 不會干擾）：
+
+| 目錄                     | 做什麼                                                                                               |
+| ------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `tests/pwsh/cases/`         | 單元測試：直接呼叫模組內部函式（解析、篩選、模糊搜尋、欄寬、排版），以及 `--list`、錯誤、結束狀態、中文與特殊字元路徑 |
+| `tests/pwsh/cases-keys/`    | 按鍵驅動：用 `gwt.psm1` 的測試掛鉤餵按鍵、收畫面，重播成最終畫面後檢查（視窗化、折行、殘影、搜尋）   |
+| `tests/pwsh/cases-console/` | 真主控台：在 Windows 的 ConPTY 偽主控台裡跑真正的 `pwsh`，送真正的按鍵（方向鍵、`Esc`、`Ctrl+C`…）  |
+
+Windows 沒有 `pty`，而且 `[Console]::ReadKey` 在輸入被導向時會直接丟例外，所以不能照搬 zsh 版的 PTY 作法：按鍵驅動測試跑得快也不會因為時間差而不穩，但沒走過真正的主控台；真主控台測試用 `tests/pwsh/lib/ConPty.ps1`（一小段 C#，用 `Add-Type` 編譯）補上那一塊。ConPTY 只有 Windows 有，其他平台會自動略過那一類。
+
 ### 專案結構
 
 ```
 git-worktree-tui/
-├── gwt.zsh                  # 函式本體（唯一需要載入的檔案）
+├── gwt.zsh                  # zsh 版函式本體（唯一需要載入的檔案）
 ├── gwt.plugin.zsh           # plugin manager 進入點
-├── install.sh               # 安裝／移除腳本
-├── Makefile                 # help / test / lint / install / demo / clean
+├── gwt.psm1                 # PowerShell 7 版（模組，只匯出 gwt）
+├── install.sh               # zsh 版安裝／移除腳本
+├── install.ps1              # PowerShell 版安裝／移除腳本
+├── Makefile                 # help / test / test-pwsh / lint / install / demo / clean
 ├── docs/
 │   ├── design-notes.md      # 每個設計決定的理由
 │   └── roadmap.md           # 後續想做的事
@@ -287,11 +418,18 @@ git-worktree-tui/
 ├── tools/
 │   └── social-card.html     # 社群分享卡的來源，以 1200×630 截圖產生 site/assets/og.png
 └── tests/
-    ├── run.sh               # 測試入口
+    ├── run.sh               # zsh 版測試入口
     ├── cases/               # 單元測試（不需要終端機）
     ├── cases-pty/           # 互動測試（需要 PTY）
     ├── fixtures/build.sh    # 測試資料產生器
-    └── lib/                 # 斷言、fixture 工具、PTY 驅動程式
+    ├── lib/                 # 斷言、fixture 工具、PTY 驅動程式
+    └── pwsh/                # PowerShell 版測試
+        ├── run.ps1          # 入口（語法檢查 + 三類測試）
+        ├── cases/           # 單元測試
+        ├── cases-keys/      # 測試掛鉤餵按鍵 + 畫面重播
+        ├── cases-console/   # ConPTY 真主控台
+        ├── fixtures/        # 測試資料產生器（PowerShell 寫的，不需要 bash）
+        └── lib/             # 斷言、按鍵驅動、畫面重播、ConPTY 驅動
 ```
 
 ## 授權
