@@ -29,7 +29,7 @@ Worktree 一多，真正花時間的從來不是 Git 指令，而是「`git work
 任選一種 shell：
 
 - zsh 5.8 以上（macOS 內建的 zsh、Homebrew 安裝的 zsh 都可以）
-- PowerShell 7.0 以上（`pwsh`，在 Windows 上開發與驗證；Windows 內建的 Windows PowerShell 5.1 不支援，到 <https://aka.ms/powershell> 安裝 PowerShell 7）
+- PowerShell 7.0 以上（`pwsh`，在 Windows 上開發與驗證；Windows 內建的 Windows PowerShell 5.1 不支援，到 <https://aka.ms/powershell> 安裝 PowerShell 7）。實測只在 PowerShell 7.7 上做過：7.0 以 code review 與一個擋掉「.NET 5 以後才有的 API」的測試把關（7.0 跑在 .NET Core 3.1 上），沒有在 7.0 上實際執行過
 
 另外都需要：
 
@@ -337,7 +337,7 @@ gwt; $LASTEXITCODE              # 取消 = 1，Ctrl+C = 130
 - **清單比畫面高時只看得到一段**：選單會顯示一個符合終端機高度的視窗，並標示目前範圍；要一次看到全部就得用 `gwt --list` 或把終端機拉高。
 - **選單開著時改變視窗大小不會重排**：寬高都在啟動時量一次，選單顯示期間調整視窗大小不會重新排版（下次執行才會生效）。
 - **多位數編號有等待感**：超過 9 筆時，按單一數字要等 `GWT_DIGIT_TIMEOUT` 才知道你是不是要按第二位數。PowerShell 版只在後面「還可能接第二位數」時才等：12 筆時按 `9`（`90` 已經超過總數）或 `3` 會立刻跳轉，只有 `1` 要等。
-- **PowerShell 版只在 Windows 上驗證過**：測試與實際操作都在 Windows 10 的 PowerShell 7 上做；macOS／Linux 的 `pwsh` 理論上能跑（不依賴任何 Windows 專屬 API，除了測試用的 ConPTY），但沒有驗證，也沒有 CI。Windows Terminal、舊的 conhost 視窗與 VS Code 終端機的實際按鍵手感也沒有逐一驗證，見 [docs/design-notes.md](docs/design-notes.md) 第 17.11 節的檢查清單。
+- **PowerShell 版只在 Windows 10 的 PowerShell 7.7 上驗證過**：測試與實際操作都在這個環境做，沒有在 7.0～7.6 的其他版本上實際跑過；macOS／Linux 的 `pwsh` 理論上能跑（不依賴任何 Windows 專屬 API，除了測試用的 ConPTY），但沒有驗證，也沒有 CI。Windows Terminal、舊的 conhost 視窗與 VS Code 終端機的實際按鍵手感也沒有逐一驗證，見 [docs/design-notes.md](docs/design-notes.md) 第 17.11 節的檢查清單。
 - **終端機窄於 17 欄時選單仍會折行**：窄到放不下完整一列時，PowerShell 版會依序省略 commit、分支，只留編號與路徑，所以 17 欄以上都能正常重繪（zsh 版下限較高，一列至少要 26 欄）；再窄就連編號加最短的路徑都放不下了。
 - **互動搜尋只比對分支與目錄名稱**：`/` 搜尋不看完整路徑，避免共同前綴干擾；命令列關鍵字（`gwt fix`）則仍然比對「路徑 + 分支」整串。
 - **搜尋不支援正規表示式**：只有子序列比對與多詞 AND。需要更複雜的查詢可以考慮接 `fzf`。

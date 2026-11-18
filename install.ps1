@@ -354,8 +354,13 @@ gwt \u5b89\u88dd\u8173\u672c\uff08PowerShell 7\uff09
     # PROFILE, named after a hash of the profile's full path: the install directory can
     # be shared by several profiles (install into a new profile A, then into an existing
     # empty profile B, same -Dir), and A's marker must never authorise deleting B.
+    # SHA256.Create().ComputeHash and BitConverter.ToString, not SHA256.HashData and
+    # Convert.ToHexString: those two arrived in .NET 5, and PowerShell 7.0 runs on
+    # .NET Core 3.1, so they would throw here for 7.0 users (before install AND uninstall).
     $profileKey = if ($IsWindows) { $profileFile.ToLowerInvariant() } else { $profileFile }
-    $profileHash = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($utf8.GetBytes($profileKey))).Substring(0, 16).ToLowerInvariant()
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try { $hashBytes = $sha.ComputeHash($utf8.GetBytes($profileKey)) } finally { $sha.Dispose() }
+    $profileHash = ([System.BitConverter]::ToString($hashBytes) -replace '-', '').Substring(0, 16).ToLowerInvariant()
     $createdMarker = Join-Path $installDir ('.profile-created.' + $profileHash)
 
     # ---- uninstall -------------------------------------------------------------------

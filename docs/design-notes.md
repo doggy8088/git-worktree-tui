@@ -658,7 +658,12 @@ zsh 版靠 `pty.fork` 開真的 PTY；Windows 沒有，而且 `[Console]::ReadKe
 - [ ] 中文與英文的 Windows、`GWT_LANG=en`；字碼頁 950／437／65001 下 `▏`、`…`、`↑↓` 都顯示正常
 - [ ] 路徑含中文、含空白的 worktree，選單每一列都只佔一行（全形字與 `…` 的欄寬在實際字型下一致）
 - [ ] 發佈後跑一次真的 `irm https://gwt.gh.miniasp.com/install.ps1 | iex`（GitHub Pages 對 `.ps1`
-      送什麼 Content-Type 沒辦法事先驗證；本機用 `application/octet-stream` 且沒有 charset 的伺服器測過）
+      送什麼 Content-Type 沒辦法事先驗證；本機用 `application/octet-stream` 且沒有 charset 的伺服器測過，
+      `cases/17-install-iex.ps1` 每次都會跑這個流程）
+- [ ] **PowerShell 7.0（.NET Core 3.1）上實際執行 `pwsh tests/pwsh/run.ps1`。** 文件宣稱支援 7.0，但開發
+      與 CI 都是新版：code review 才發現 `install.ps1` 用了 .NET 5 才有的 `SHA256.HashData` 與
+      `Convert.ToHexString`，在 7.0 上安裝與移除都會丟例外，而 7.7 上完全看不出來。已改用 .NET Core 3.1 就有的
+      API，並加了 `cases/16-compat.ps1` 擋掉已知的不相容寫法，但那只是防線，不是在 7.0 上實跑的證明。
 
 macOS／Linux 的 `pwsh` 沒有驗證，也沒有 CI。
 
