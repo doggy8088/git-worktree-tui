@@ -122,6 +122,81 @@ if (Test-Path -LiteralPath $sb.Profile) {
   Assert-Eq '[安裝時建立的 profile] 保留的只剩使用者自己的內容' "Write-Host later`n" (Get-Text $sb.Profile)
 }
 
+# --- 「這個 profile 是安裝腳本建立的」要記在每個 profile 自己身上，不是記在安裝目錄 -----------
+# 同一個 -Dir 配不同的 -ProfilePath：A 原本不存在（我們建立的），B 原本就是空檔案（使用者的）。
+# 移除 B 時不能拿 A 的建立紀錄當授權，把使用者本來就有的 B 刪掉。
+$sb = New-Sandbox
+$profileA = Join-Path $sb.Root 'profile-a.ps1'
+$profileB = Join-Path $sb.Root 'profile-b.ps1'
+[System.IO.File]::WriteAllBytes($profileB, [byte[]]@())
+[void](Invoke-Installer @('-Dir', $sb.Dir, '-ProfilePath', $profileA))
+[void](Invoke-Installer @('-Dir', $sb.Dir, '-ProfilePath', $profileB))
+Assert-True '[兩個 profile] A 是安裝時建立的' (Test-Path -LiteralPath $profileA)
+$u = Invoke-Installer @('-Dir', $sb.Dir, '-ProfilePath', $profileB, '-Uninstall')
+Assert-Rc '[兩個 profile] 移除 B 回傳 0' 0 $u.Rc
+Assert-True '[兩個 profile] 移除 B 之後，原本就有的空檔案 B 還在（不能拿 A 的建立紀錄刪掉它）' (Test-Path -LiteralPath $profileB)
+if (Test-Path -LiteralPath $profileB) {
+  Assert-Rc '[兩個 profile] B 還原成原本的 0 位元組' 0 ([System.IO.File]::ReadAllBytes($profileB)).Length
+}
+$u = Invoke-Installer @('-Dir', $sb.Dir, '-ProfilePath', $profileA, '-Uninstall')
+Assert-Rc '[兩個 profile] 接著移除 A 回傳 0' 0 $u.Rc
+Assert-True '[兩個 profile] 安裝時建立的 A 仍然會被刪掉' (-not (Test-Path -LiteralPath $profileA))
+Assert-True '[兩個 profile] 兩個都移除後安裝目錄清乾淨' (-not (Test-Path -LiteralPath $sb.Dir))
+
+# 相反的順序：先裝原本就有的 B，再裝不存在的 A，然後先移除 A
+$sb = New-Sandbox
+$profileA = Join-Path $sb.Root 'profile-a.ps1'
+$profileB = Join-Path $sb.Root 'profile-b.ps1'
+[System.IO.File]::WriteAllBytes($profileB, $utf8.GetBytes("  `n"))
+[void](Invoke-Installer @('-Dir', $sb.Dir, '-ProfilePath', $profileB))
+[void](Invoke-Installer @('-Dir', $sb.Dir, '-ProfilePath', $profileA))
+[void](Invoke-Installer @('-Dir', $sb.Dir, '-ProfilePath', $profileA, '-Uninstall'))
+Assert-True '[兩個 profile、相反順序] A 被刪掉' (-not (Test-Path -LiteralPath $profileA))
+[void](Invoke-Installer @('-Dir', $sb.Dir, '-ProfilePath', $profileB, '-Uninstall'))
+Assert-True '[兩個 profile、相反順序] 原本只有空白的 B 還在' (Test-Path -LiteralPath $profileB)
+if (Test-Path -LiteralPath $profileB) {
+  Assert-Eq '[兩個 profile、相反順序] B 逐位元組還原' ([Convert]::ToBase64String($utf8.GetBytes("  `n"))) (Get-B64 $profileB)
+}
+
+# --- 安裝路徑含中文，而 profile 是舊式單位元組編碼（Big5）-----------------------------------
+# 為了不弄壞原本的位元組，這種 profile 是以 Latin-1 逐位元組讀寫的；新加的 import 那一行如果
+# 直接寫中文路徑，會被編成 ?，安裝宣告成功，之後每個終端機都載入不了。這一行要用純 ASCII 表示。
+function Get-ImportedPath {
+  # profile 裡那一行 Import-Module 的引數，當成 PowerShell 運算式求值之後得到的路徑。
+  # 不能只看「載入成功」：被寫成 ?? 的路徑會被 PowerShell 當成萬用字元，剛好只有一個目錄
+  # 符合時照樣載得進去，看起來沒問題，其實那一行早就壞了。要求值結果與預期的路徑一字不差。
+  param([string]$ProfilePath)
+  $text = Get-Content -LiteralPath $ProfilePath -Raw
+  $m = [regex]::Match($text, '(?m)^Import-Module (.+?)\s*$')
+  if (-not $m.Success) { return $null }
+  return [string](& ([scriptblock]::Create($m.Groups[1].Value)))
+}
+function Test-ProfileImports {
+  param([string]$ProfilePath, [string]$ExpectedModulePath)
+  if ((Get-ImportedPath $ProfilePath) -ne $ExpectedModulePath) { return $false }
+  # 再實際載入一次。這些 fixture profile 自己會印東西（Write-Host hi）甚至報錯（Big5 那份有一行
+  # 單獨的 Write），所以只認「MODPATH=」那一行，不拿整段輸出來比。
+  $out = & $pwshExe -NoProfile -NonInteractive -Command ". '$ProfilePath'; 'MODPATH=' + (Get-Module gwt).Path" 2>&1
+  $m = [regex]::Match((@($out) | ForEach-Object { "$_" }) -join "`n", '(?m)^MODPATH=(.*?)\s*$')
+  return ($m.Success -and $m.Groups[1].Value -eq $ExpectedModulePath)
+}
+foreach ($name in '非 UTF-8 的舊式 ANSI（Big5）', 'LF、有結尾換行', 'UTF-16LE（有 BOM）') {
+  $sb = New-Sandbox
+  $cjkDir = Join-Path $sb.Root '工具\gwt 模組'
+  [System.IO.File]::WriteAllBytes($sb.Profile, $cases[$name])
+  $i = Invoke-Installer @('-Dir', $cjkDir, '-ProfilePath', $sb.Profile)
+  Assert-Rc "[中文安裝路徑、$name] 安裝回傳 0" 0 $i.Rc
+  Assert-True "[中文安裝路徑、$name] profile 載入後真的從中文路徑載入了模組" (Test-ProfileImports $sb.Profile (Join-Path $cjkDir 'gwt.psm1'))
+  [void](Invoke-Installer @('-Dir', $cjkDir, '-ProfilePath', $sb.Profile, '-Uninstall'))
+  Assert-Eq "[中文安裝路徑、$name] 移除後 profile 逐位元組還原" ([Convert]::ToBase64String($cases[$name])) (Get-B64 $sb.Profile)
+}
+# 路徑裡有 $、反引號、雙引號與單引號：用 ASCII 表示時也不能被展開或截斷（雙引號在 Windows 路徑裡不合法，不測）
+$sb = New-Sandbox
+$oddDir = Join-Path $sb.Root "工具 `$HOME's"
+[System.IO.File]::WriteAllBytes($sb.Profile, $cases['非 UTF-8 的舊式 ANSI（Big5）'])
+[void](Invoke-Installer @('-Dir', $oddDir, '-ProfilePath', $sb.Profile))
+Assert-True '[中文與 $、單引號的路徑、Big5] profile 載入後從正確的路徑載入' (Test-ProfileImports $sb.Profile (Join-Path $oddDir 'gwt.psm1'))
+
 # --- 沒有裝過就移除：什麼都不動 ---------------------------------------------------------
 $sb = New-Sandbox
 [System.IO.File]::WriteAllBytes($sb.Profile, $cases['沒有結尾換行'])

@@ -304,9 +304,43 @@ gwt \u5b89\u88dd\u8173\u672c\uff08PowerShell 7\uff09
     # The import line in the profile. Under the home directory it is written with
     # $HOME (works after moving to another machine or account); otherwise as an
     # absolute path in single quotes (which expand neither $ nor backticks).
-    function Get-ImportLine {
+    # A double-quoted PowerShell string that is pure ASCII: ` $ " are escaped and every
+    # other non-ASCII character becomes a `u{XXXX} escape (pwsh 7 syntax; the profile is
+    # a pwsh profile). Used when the profile is a legacy single-byte file.
+    function ConvertTo-AsciiDq([string]$Text) {
+      $sb = [System.Text.StringBuilder]::new()
+      $i = 0
+      while ($i -lt $Text.Length) {
+        $c = $Text[$i]
+        if ([char]::IsHighSurrogate($c) -and ($i + 1 -lt $Text.Length) -and [char]::IsLowSurrogate($Text[$i + 1])) {
+          [void]$sb.Append('`u{' + [char]::ConvertToUtf32($c, $Text[$i + 1]).ToString('X') + '}')
+          $i += 2
+          continue
+        }
+        $code = [int]$c
+        if ($code -eq 0x60 -or $code -eq 0x22 -or $code -eq 0x24) { [void]$sb.Append('`').Append($c) }
+        elseif ($code -lt 32 -or $code -gt 126) { [void]$sb.Append('`u{' + $code.ToString('X') + '}') }
+        else { [void]$sb.Append($c) }
+        $i++
+      }
+      return $sb.ToString()
+    }
+
+    # AsciiOnly: the profile is read and written byte for byte through Latin-1 (it holds
+    # bytes that are not valid UTF-8, e.g. an old ANSI file). Latin-1 cannot hold a
+    # Chinese install path: each such character would be written as '?', which PowerShell
+    # reads as a wildcard, so the line only works while exactly one directory matches.
+    # (And a Latin-1 byte like E9 is not valid UTF-8 either.) So in that case the line
+    # must be pure ASCII.
+    function Get-ImportLine([bool]$AsciiOnly) {
       $homeDir = $HOME.TrimEnd('\', '/')
       $sep = [System.IO.Path]::DirectorySeparatorChar
+      if ($AsciiOnly) {
+        if ($target.StartsWith($homeDir + $sep, [System.StringComparison]::OrdinalIgnoreCase)) {
+          return 'Import-Module "$HOME' + (ConvertTo-AsciiDq $target.Substring($homeDir.Length)) + '"'
+        }
+        return 'Import-Module "' + (ConvertTo-AsciiDq $target) + '"'
+      }
       if ($target.StartsWith($homeDir + $sep, [System.StringComparison]::OrdinalIgnoreCase)) {
         $rest = $target.Substring($homeDir.Length)
         if ($rest -notmatch '[`$"'']') { return 'Import-Module "$HOME' + $rest + '"' }
@@ -316,8 +350,13 @@ gwt \u5b89\u88dd\u8173\u672c\uff08PowerShell 7\uff09
 
     # Written next to the module when install had to CREATE the profile. It is how
     # uninstall tells "a file we made" (delete it again) from "an empty or
-    # whitespace-only file the user already had" (restore it exactly).
-    $createdMarker = Join-Path $installDir '.profile-created'
+    # whitespace-only file the user already had" (restore it exactly). One marker PER
+    # PROFILE, named after a hash of the profile's full path: the install directory can
+    # be shared by several profiles (install into a new profile A, then into an existing
+    # empty profile B, same -Dir), and A's marker must never authorise deleting B.
+    $profileKey = if ($IsWindows) { $profileFile.ToLowerInvariant() } else { $profileFile }
+    $profileHash = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($utf8.GetBytes($profileKey))).Substring(0, 16).ToLowerInvariant()
+    $createdMarker = Join-Path $installDir ('.profile-created.' + $profileHash)
 
     # ---- uninstall -------------------------------------------------------------------
     if ($Uninstall) {
@@ -424,11 +463,12 @@ gwt \u5b89\u88dd\u8173\u672c\uff08PowerShell 7\uff09
     # next line. Never add a second newline to "terminate" the last line: then "A" and
     # "A<nl>" would look the same after install and uninstall could not tell them apart.
     if ($text.Length -gt 0) { $text += $nl }
-    $text += $beginMark + $nl + (Get-ImportLine) + $nl + $endMark + $nl
+    $text += $beginMark + $nl + (Get-ImportLine ($info.Encoding.CodePage -eq 28591)) + $nl + $endMark + $nl
     Write-ProfileText $profileFile $info $text
     if (-not $info.Exists) {
-      # We created the profile: remember it, so uninstall deletes it again
-      [void](New-Item -ItemType File -Path $createdMarker -Force)
+      # We created the profile: remember it (the path inside is only for a human reading
+      # the file; uninstall goes by the file name), so uninstall deletes it again
+      [System.IO.File]::WriteAllText($createdMarker, $profileFile, $utf8)
     }
 
     # "Installed to <file> (version <v>)" / "Added the import block to <profile>"
