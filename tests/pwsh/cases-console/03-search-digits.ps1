@@ -10,7 +10,7 @@ $twelve = Join-Path $env:GWT_FIXTURE 'twelve'
 $nap = @{ Sleep = 350 }
 
 # 每一輪用哪個 fixture：以環境變數傳給子行程
-$plan = @('shop', 'shop', 'shop', 'shop', 'shop', 'shop', 'shop', 'twelve', 'twelve', 'twelve', 'twelve')
+$plan = @('shop', 'shop', 'shop', 'shop', 'shop', 'shop', 'shop', 'twelve', 'twelve', 'twelve', 'twelve', 'twelve', 'shop')
 $env:GWT_TEST_PLAN = $plan -join ','
 
 $scenario = {
@@ -36,6 +36,8 @@ $steps += New-RunSteps 8 @('1', '2')                                            
 $steps += New-RunSteps 9 @('1', '0')                                             # 0 當第二位數
 $steps += New-RunSteps 10 @('9')                                                 # 9 不可能再接第二位數，立刻生效
 $steps += New-RunSteps 11 @('1')                                                 # 單一個 1：等 timeout 後生效
+$steps += New-RunSteps 12 @('1', $k.CtrlC)                                       # 等第二位數時按 Ctrl+C：是中斷
+$steps += New-RunSteps 13 @('9', $k.Enter)                                       # 5 筆時 9 被忽略，Enter 仍可確認
 
 $r = Invoke-InConsole -Script $scenario -Steps $steps -Rows 50 -Cols 200 -TimeoutSec 90
 Assert-True '沒有逾時、沒有等不到的步驟' ((-not $r.TimedOut) -and ($null -eq $r.WaitFailed))
@@ -60,5 +62,7 @@ Check 8 '12' 0 (Get-FixturePath $twelve 12)
 Check 9 '10' 0 (Get-FixturePath $twelve 10)
 Check 10 '9' 0 (Get-FixturePath $twelve 9)
 Check 11 '單一個 1（等 timeout）' 0 (Get-FixturePath $twelve 1)
+Check 12 '1 然後 Ctrl+C（等第二位數時中斷）' 130 $twelve
+Check 13 '9（超出範圍）然後 Enter' 0 (Get-FixturePath $shop 1)
 
 Complete-Tests

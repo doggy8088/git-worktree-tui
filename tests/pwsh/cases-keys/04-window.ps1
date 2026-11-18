@@ -77,8 +77,6 @@ Assert-Screen '沒有重複的列' '^DUPLICATES=-$' $screen
 Assert-Screen '光棒在第 2 筆' '^ > \[2\]' $screen
 
 # 每一列的欄寬都不超過畫面：重播時若有折行，列數就會變多。
-# 最窄測到 30 欄：一列至少要放 前綴 7 + 路徑 4 + 間隔 2 + […] (7 碼 hash) 13 = 26 欄，
-# 再窄就連最小內容都放不下（zsh 版的算式相同，同樣的限制）。
 foreach ($cols in 30, 48, 60, 120) {
   Enter-Fixture 'longname'
   $r = Invoke-Gwt -Keys '<down>' -Rows 12 -Cols $cols
@@ -86,5 +84,30 @@ foreach ($cols in 30, 48, 60, 120) {
   Assert-Screen "$cols 欄下 2 筆各佔一列" '^ITEM_ROWS=2$' $screen
   Assert-Screen "$cols 欄下沒有重複" '^DUPLICATES=-$' $screen
 }
+
+# 很窄的終端機：一列放不下完整資訊時，要先省略 commit、再省略分支、最後只留路徑。
+# 完整的一列至少要 前綴 7 + 路徑 4 + 間隔 2 + […] (7 碼 hash) 13 = 26 欄；
+# 在這之下如果硬塞，一列會折成兩行，重繪與收尾算的列數就會錯，畫面留下殘影。
+foreach ($fx in 'longname', 'shop', 'cjk') {
+  $count = Get-FixtureCount (Join-Path $env:GWT_FIXTURE $fx)
+  foreach ($cols in 17, 20, 24, 25, 26, 27, 30) {
+    Enter-Fixture $fx
+    $r = Invoke-Gwt -Keys '<down>' -Rows 14 -Cols $cols
+    $screen = Get-ScreenReplay -Text $r.Raw -Rows 14 -Cols $cols
+    Assert-Screen "$fx $cols 欄：每筆各佔一列（$count 筆）" "^ITEM_ROWS=$count$" $screen
+    Assert-Screen "$fx $cols 欄：沒有重複的列" '^DUPLICATES=-$' $screen
+    Assert-Screen "$fx $cols 欄：光棒在第 2 筆" '^SELECTED=2$' $screen
+  }
+}
+
+# 收尾也一樣：窄到要省略資訊時，選完後整塊都要擦乾淨
+Remove-Item Env:\GWT_CLEAR_ON_EXIT
+Enter-Fixture 'shop'
+$r = Invoke-Gwt -Keys '<down><enter>' -Rows 14 -Cols 25
+$r.Cap.Append("AFTER=$(Get-Here)`n") | Out-Null
+$screen = Get-ScreenReplay -Text $r.Cap.ToString() -Rows 14 -Cols 25
+Assert-Screen '25 欄選完後有輸出後續的文字' '^AFTER=' $screen
+Assert-NotScreen '25 欄選完後沒有表頭殘影' '請選擇' $screen
+Assert-NotScreen '25 欄選完後沒有項目列殘留' '\[\d+\]' $screen
 
 Complete-Tests

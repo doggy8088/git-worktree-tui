@@ -30,13 +30,26 @@ gwt fea<TAB>   # 補出符合的 worktree 路徑
 
 目前順序完全照 Git 的輸出（依路徑排序）。可以加 `GWT_SORT=path|recent|branch`，用 `zstat` 讀目錄的 mtime 做「最近用過」排序。
 
-### 5a. zsh 版：多位數編號的第一位數不必等待
+### 5a. zsh 版：把 PowerShell 版 code review 找到的問題補回來
 
-[design-notes 第 10 節](design-notes.md) 寫「若已輸入的數字再加一位就會超過總數，立刻結束等待」，但 `gwt.zsh` 的
-`_gwt_pick_number` 是讀到第二位數「之後」才判斷，所以第一位數一律要等滿 `GWT_DIGIT_TIMEOUT`：12 筆時按 `9`
-明明不可能再接第二位數，仍然白等 0.4 秒。PowerShell 版（`Invoke-GwtPickNumber`）已經把判斷放到等待之前。
-zsh 版照做只要在 `while` 迴圈開頭加一行 `(( 10#$digits * 10 > _GWT_COUNT )) && break`，再補一個測試：
-`12` 筆時按 `9` 應該在遠小於 timeout 的時間內跳轉。
+PowerShell 版開發與 code review 時，發現 `gwt.zsh` 的程式碼有下面四個同樣的結構。PowerShell 版都已修正並有
+重現的測試（[design-notes 第 17.6、17.9 節](design-notes.md)）。**下面是對照 `gwt.zsh` 讀程式碼得到的結論，沒有
+實際在 zsh 上重現**（寫 PowerShell 版時沒有 zsh 可跑），動手前先用 PTY 測試確認：
+
+1. **多位數編號的第一位數不必等待。** [design-notes 第 10 節](design-notes.md) 寫「若已輸入的數字再加一位就會超過
+   總數，立刻結束等待」，但 `_gwt_pick_number` 是讀到第二位數「之後」才判斷，所以第一位數一律要等滿
+   `GWT_DIGIT_TIMEOUT`：12 筆時按 `9` 明明不可能再接第二位數，仍然白等 0.4 秒。在 `while` 迴圈開頭加一行
+   `(( 10#$digits * 10 > _GWT_COUNT )) && break` 即可。
+2. **被忽略的數字會弄掉目前的選取。** `_gwt_pick_number` 無條件 `_GWT_SELECTED=$(( 10#$digits ))`；5 筆時按 `9`
+   被主迴圈忽略，但 `_GWT_SELECTED` 已經是 9：光棒消失、Enter 回傳失敗。應該先確認在範圍內才指定。
+3. **等第二位數時收到的 `Ctrl+C` 位元組會被丟掉。** 一般情況下 `Ctrl+C` 是 SIGINT，由 `INT` trap 處理，不受影響；
+   但終端機關掉 `ISIG`、`Ctrl+C` 以 `$'\x03'` 進來時（主迴圈另外處理過這種情況），`_gwt_pick_number` 會把它放進
+   `_GWT_PENDING_KEY`，之後數字有效就直接 `return 0`，沒人看那個按鍵。`_gwt_pick_number` 回來後要先檢查它。
+4. **很窄的終端機會折行。** 一列至少要 26 欄，而寬度下限是 24（`(( w < 24 )) && w=24`）；放不下時要依序省略
+   commit、分支，不能硬把路徑夾到 4 欄。
+
+每一項都要補測試：1 用「按 `9` 的耗時」，2 用 PTY 送 `9\n`，3 要先把 PTY 的 `ISIG` 關掉再送 `1\x03`，
+4 用 25 欄的 PTY 重播畫面檢查沒有重複的列。
 
 ## 中期（需要設計討論）
 

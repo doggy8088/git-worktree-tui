@@ -146,7 +146,7 @@ Import-Module "$HOME\.gwt\gwt.psm1"
 # <<< gwt (git-worktree-tui) <<<
 ```
 
-只有這一段是腳本產生的，其餘內容原封不動（編碼、BOM、換行都保持原樣）；重複執行不會重複加行，移除時會把這一段拿掉，並刪掉 `gwt.psm1`。profile 裡若還有別行也在載入 `gwt.psm1`，腳本會提醒你，但不會動它。腳本不會改 PowerShell 的執行原則；如果目前是 `Restricted` 或 `AllSigned`，它會警告開新視窗時 profile 不會被載入，並告訴你怎麼改（只影響你自己的帳號）：
+只有這一段是腳本產生的，其餘內容原封不動（編碼、BOM、換行都保持原樣）；重複執行不會重複加行，移除時會把這一段拿掉，並刪掉 `gwt.psm1`，profile 與安裝前逐位元組相同（原本就有的 profile，即使是空的、只有空白、沒有結尾換行或是 UTF-16／UTF-32 編碼，都會原樣還原；原本不存在而由腳本建立的 profile，移除時一併刪除）。任何一步失敗（例如模組檔被鎖住無法覆蓋或刪除）都會明確報錯並回傳 1，不會報告成功。profile 裡若還有別行也在載入 `gwt.psm1`，腳本會提醒你，但不會動它。腳本不會改 PowerShell 的執行原則；如果目前是 `Restricted` 或 `AllSigned`，它會警告開新視窗時 profile 不會被載入，並告訴你怎麼改（只影響你自己的帳號）：
 
 ```powershell
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
@@ -337,7 +337,8 @@ gwt; $LASTEXITCODE              # 取消 = 1，Ctrl+C = 130
 - **清單比畫面高時只看得到一段**：選單會顯示一個符合終端機高度的視窗，並標示目前範圍；要一次看到全部就得用 `gwt --list` 或把終端機拉高。
 - **選單開著時改變視窗大小不會重排**：寬高都在啟動時量一次，選單顯示期間調整視窗大小不會重新排版（下次執行才會生效）。
 - **多位數編號有等待感**：超過 9 筆時，按單一數字要等 `GWT_DIGIT_TIMEOUT` 才知道你是不是要按第二位數。PowerShell 版只在後面「還可能接第二位數」時才等：12 筆時按 `9`（`90` 已經超過總數）或 `3` 會立刻跳轉，只有 `1` 要等。
-- **PowerShell 版只在 Windows 上驗證過**：測試與實際操作都在 Windows 10 的 PowerShell 7 上做；macOS／Linux 的 `pwsh` 理論上能跑（不依賴任何 Windows 專屬 API，除了測試用的 ConPTY），但沒有驗證，也沒有 CI。Windows Terminal、舊的 conhost 視窗與 VS Code 終端機的實際按鍵手感也沒有逐一驗證，見 [docs/design-notes.md](docs/design-notes.md) 第 17 節末的檢查清單。
+- **PowerShell 版只在 Windows 上驗證過**：測試與實際操作都在 Windows 10 的 PowerShell 7 上做；macOS／Linux 的 `pwsh` 理論上能跑（不依賴任何 Windows 專屬 API，除了測試用的 ConPTY），但沒有驗證，也沒有 CI。Windows Terminal、舊的 conhost 視窗與 VS Code 終端機的實際按鍵手感也沒有逐一驗證，見 [docs/design-notes.md](docs/design-notes.md) 第 17.11 節的檢查清單。
+- **終端機窄於 17 欄時選單仍會折行**：窄到放不下完整一列時，PowerShell 版會依序省略 commit、分支，只留編號與路徑，所以 17 欄以上都能正常重繪（zsh 版下限較高，一列至少要 26 欄）；再窄就連編號加最短的路徑都放不下了。
 - **互動搜尋只比對分支與目錄名稱**：`/` 搜尋不看完整路徑，避免共同前綴干擾；命令列關鍵字（`gwt fix`）則仍然比對「路徑 + 分支」整串。
 - **搜尋不支援正規表示式**：只有子序列比對與多詞 AND。需要更複雜的查詢可以考慮接 `fzf`。
 - **不會自動清理失效的 worktree**：目錄被砍掉但沒 `git worktree prune` 的話，清單裡還是會出現。
@@ -393,7 +394,7 @@ pwsh tests/pwsh/run.ps1 -Keep            # 保留暫存目錄，方便失敗時�
 
 | 目錄                     | 做什麼                                                                                               |
 | ------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `tests/pwsh/cases/`         | 單元測試：直接呼叫模組內部函式（解析、篩選、模糊搜尋、欄寬、排版），以及 `--list`、錯誤、結束狀態、中文與特殊字元路徑 |
+| `tests/pwsh/cases/`         | 單元測試：直接呼叫模組內部函式（解析、篩選、模糊搜尋、欄寬、排版），以及 `--list`、錯誤、結束狀態、中文與特殊字元路徑、`install.ps1` 在各種 profile 編碼與內容下的安裝／移除還原 |
 | `tests/pwsh/cases-keys/`    | 按鍵驅動：用 `gwt.psm1` 的測試掛鉤餵按鍵、收畫面，重播成最終畫面後檢查（視窗化、折行、殘影、搜尋）   |
 | `tests/pwsh/cases-console/` | 真主控台：在 Windows 的 ConPTY 偽主控台裡跑真正的 `pwsh`，送真正的按鍵（方向鍵、`Esc`、`Ctrl+C`…）  |
 
