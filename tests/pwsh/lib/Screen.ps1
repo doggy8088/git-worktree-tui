@@ -17,14 +17,29 @@
 # 下一行，跟真實終端機一樣。中文路徑的折行錯誤只有這樣才抓得到。
 # -----------------------------------------------------------------------------
 
+# 寬度為 2 的基本多文種平面（BMP）範圍：Unicode 的 East Asian Width 是 W（Wide）或 F（Fullwidth）。
+# 這是「真實終端機認定的寬度」，不是從 gwt 抄來的：gwt.psm1 的 Get-GwtWidth 是另一份獨立的實作，
+# 兩邊各自對照 cases/08-width.ps1 與 cases/18-screen-replay.ps1 裡「逐字寫死的 Unicode 預期值」，
+# 不能讓它們共用同一個盲點（只有 CJK 範圍的表，會把 ⚡ ⌚ ✅ 這類寬度為 2 的符號當成 1 欄）。
+# 代理對（基本多文種平面以外的 emoji 等）一律算 2。
+$script:WideRanges = @(
+  @(0x1100, 0x115F), @(0x231A, 0x231B), @(0x2329, 0x232A), @(0x23E9, 0x23EC), @(0x23F0, 0x23F0), @(0x23F3, 0x23F3),
+  @(0x25FD, 0x25FE), @(0x2614, 0x2615), @(0x2648, 0x2653), @(0x267F, 0x267F), @(0x2693, 0x2693), @(0x26A1, 0x26A1),
+  @(0x26AA, 0x26AB), @(0x26BD, 0x26BE), @(0x26C4, 0x26C5), @(0x26CE, 0x26CE), @(0x26D4, 0x26D4), @(0x26EA, 0x26EA),
+  @(0x26F2, 0x26F3), @(0x26F5, 0x26F5), @(0x26FA, 0x26FA), @(0x26FD, 0x26FD), @(0x2705, 0x2705), @(0x270A, 0x270B),
+  @(0x2728, 0x2728), @(0x274C, 0x274C), @(0x274E, 0x274E), @(0x2753, 0x2755), @(0x2757, 0x2757), @(0x2795, 0x2797),
+  @(0x27B0, 0x27B0), @(0x27BF, 0x27BF), @(0x2B1B, 0x2B1C), @(0x2B50, 0x2B50), @(0x2B55, 0x2B55),
+  @(0x2E80, 0x303E), @(0x3041, 0xA4CF), @(0xA960, 0xA97F), @(0xAC00, 0xD7A3), @(0xF900, 0xFAFF),
+  @(0xFE10, 0xFE19), @(0xFE30, 0xFE6F), @(0xFF00, 0xFF60), @(0xFFE0, 0xFFE6)
+)
+
 function Get-CellWidth {
   param([string]$Unit)
   if ($Unit.Length -ge 2) { return 2 }   # 代理對（emoji 等）
   $code = [int]$Unit[0]
-  if (($code -ge 0x1100 -and $code -le 0x115F) -or ($code -ge 0x2E80 -and $code -le 0xA4CF) -or
-    ($code -ge 0xAC00 -and $code -le 0xD7A3) -or ($code -ge 0xF900 -and $code -le 0xFAFF) -or
-    ($code -ge 0xFE30 -and $code -le 0xFE4F) -or ($code -ge 0xFF00 -and $code -le 0xFF60) -or
-    ($code -ge 0xFFE0 -and $code -le 0xFFE6)) { return 2 }
+  foreach ($range in $script:WideRanges) {
+    if ($code -ge $range[0] -and $code -le $range[1]) { return 2 }
+  }
   return 1
 }
 
@@ -45,6 +60,12 @@ function Get-ScreenReplay {
     param($r)
     for ($c = 0; $c -lt $Cols; $c++) { $grid[$r][$c] = ' ' }
   }
+  # 全形字佔兩個儲存格：左半存字，右半存 $null。蓋掉或清掉其中一半時，另一半不能留著——真實終端機會把
+  # 整個全形字清成空白。留著的話，剩下的那一半會讓整列的欄位錯開（右半 $null 輸出時被略過，後面的字就左移）。
+  #   $orphanLeft  r c：從第 c 欄開始要被改寫；如果第 c 欄是某個全形字的右半，它的左半（c-1）清成空白
+  #   $orphanRight r c：到第 c 欄為止都被改寫了；如果第 c+1 欄是右半，它的左半（c）已經不在，清成空白
+  $orphanLeft = { param($r, $c) if ($c -gt 0 -and $c -lt $Cols -and $null -eq $grid[$r][$c]) { $grid[$r][$c - 1] = ' ' } }
+  $orphanRight = { param($r, $c) if ($c -ge 0 -and $c + 1 -lt $Cols -and $null -eq $grid[$r][$c + 1]) { $grid[$r][$c + 1] = ' ' } }
   $newline = {
     $state.Row++
     $state.Col = 0
@@ -100,12 +121,21 @@ function Get-ScreenReplay {
           # ESC[2K，所以游標怎樣都在行首；ConPTY 的輸出則會在游標已經移到某一欄之後才送 ESC[2K，
           # 這時把游標歸零會讓後面的文字畫到錯的位置。
           if ($first -eq 2) { & $blank $state.Row }
-          elseif ($first -eq 1) { for ($c = 0; $c -le $state.Col; $c++) { $grid[$state.Row][$c] = ' ' } }
-          else { for ($c = $state.Col; $c -lt $Cols; $c++) { $grid[$state.Row][$c] = ' ' } }
+          elseif ($first -eq 1) {
+            for ($c = 0; $c -le $state.Col; $c++) { $grid[$state.Row][$c] = ' ' }
+            & $orphanRight $state.Row $state.Col
+          }
+          else {
+            & $orphanLeft $state.Row $state.Col
+            for ($c = $state.Col; $c -lt $Cols; $c++) { $grid[$state.Row][$c] = ' ' }
+          }
         }
         'X' {
           $k = if ($first -gt 0) { $first } else { 1 }
-          for ($c = $state.Col; $c -lt [math]::Min($Cols, $state.Col + $k); $c++) { $grid[$state.Row][$c] = ' ' }
+          $end = [math]::Min($Cols, $state.Col + $k) - 1
+          & $orphanLeft $state.Row $state.Col
+          for ($c = $state.Col; $c -le $end; $c++) { $grid[$state.Row][$c] = ' ' }
+          & $orphanRight $state.Row $end
         }
         'J' {
           if ($first -eq 2 -or $first -eq 3) {
@@ -114,8 +144,10 @@ function Get-ScreenReplay {
           elseif ($first -eq 1) {
             for ($r = 0; $r -lt $state.Row; $r++) { & $blank $r }
             for ($c = 0; $c -le $state.Col; $c++) { $grid[$state.Row][$c] = ' ' }
+            & $orphanRight $state.Row $state.Col
           }
           else {
+            & $orphanLeft $state.Row $state.Col
             for ($c = $state.Col; $c -lt $Cols; $c++) { $grid[$state.Row][$c] = ' ' }
             for ($r = $state.Row + 1; $r -lt $Rows; $r++) { & $blank $r }
           }
@@ -136,6 +168,9 @@ function Get-ScreenReplay {
     $w = Get-CellWidth $unit
     # 延遲換行：寫到最後一欄之後，要等下一個字元才真的換行；放不下的全形字整個換行
     if ($state.Col + $w -gt $Cols) { $state.Wraps++; & $newline }
+    # 寫在別的全形字的某一半上面：那個全形字的另一半要一起清掉（見 $orphanLeft／$orphanRight）
+    & $orphanLeft $state.Row $state.Col
+    & $orphanRight $state.Row ($state.Col + $w - 1)
     $grid[$state.Row][$state.Col] = $unit
     if ($w -eq 2) { $grid[$state.Row][$state.Col + 1] = $null }
     $state.Col += $w

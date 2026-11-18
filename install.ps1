@@ -332,20 +332,34 @@ gwt \u5b89\u88dd\u8173\u672c\uff08PowerShell 7\uff09
     # reads as a wildcard, so the line only works while exactly one directory matches.
     # (And a Latin-1 byte like E9 is not valid UTF-8 either.) So in that case the line
     # must be pure ASCII.
+    #
+    # Wildcards: Import-Module expands a rooted path as a wildcard pattern BEFORE loading
+    # it, and quoting the argument does not prevent that. An install directory such as
+    # gwt[12] is read as "gwt1 or gwt2", so with a sibling gwt1\gwt.psm1 the profile would
+    # quietly load THE SIBLING (verified: the module that runs is the other one) while the
+    # installer reported success. The value handed to Import-Module must therefore be the
+    # wildcard-ESCAPED path (a backtick before [ ] * ?). That value contains backticks, so it
+    # goes in single quotes, where a backtick is plain data; in the double-quoted ASCII form
+    # ConvertTo-AsciiDq doubles it. The $HOME form is used only when neither $HOME nor the
+    # rest of the path has anything to escape.
     function Get-ImportLine([bool]$AsciiOnly) {
       $homeDir = $HOME.TrimEnd('\', '/')
       $sep = [System.IO.Path]::DirectorySeparatorChar
+      $escapedTarget = [System.Management.Automation.WildcardPattern]::Escape($target)
+      $underHome = $target.StartsWith($homeDir + $sep, [System.StringComparison]::OrdinalIgnoreCase) -and
+        ([System.Management.Automation.WildcardPattern]::Escape($homeDir) -ceq $homeDir)
       if ($AsciiOnly) {
-        if ($target.StartsWith($homeDir + $sep, [System.StringComparison]::OrdinalIgnoreCase)) {
-          return 'Import-Module "$HOME' + (ConvertTo-AsciiDq $target.Substring($homeDir.Length)) + '"'
+        if ($underHome) {
+          $rest = [System.Management.Automation.WildcardPattern]::Escape($target.Substring($homeDir.Length))
+          return 'Import-Module "$HOME' + (ConvertTo-AsciiDq $rest) + '"'
         }
-        return 'Import-Module "' + (ConvertTo-AsciiDq $target) + '"'
+        return 'Import-Module "' + (ConvertTo-AsciiDq $escapedTarget) + '"'
       }
-      if ($target.StartsWith($homeDir + $sep, [System.StringComparison]::OrdinalIgnoreCase)) {
-        $rest = $target.Substring($homeDir.Length)
+      if ($underHome) {
+        $rest = [System.Management.Automation.WildcardPattern]::Escape($target.Substring($homeDir.Length))
         if ($rest -notmatch '[`$"'']') { return 'Import-Module "$HOME' + $rest + '"' }
       }
-      return "Import-Module '" + $target.Replace("'", "''") + "'"
+      return "Import-Module '" + $escapedTarget.Replace("'", "''") + "'"
     }
 
     # Written next to the module when install had to CREATE the profile. It is how
@@ -506,7 +520,9 @@ gwt \u5b89\u88dd\u8173\u672c\uff08PowerShell 7\uff09
     $loaded = $false
     if (-not $PSCommandPath) {
       try {
-        Import-Module -Name $target -Global -Force -DisableNameChecking -ErrorAction Stop
+        # Escaped for the same reason as the profile line (see Get-ImportLine): without it a
+        # path like gwt[12] would load a sibling gwt1\gwt.psm1 into the user's session.
+        Import-Module -Name ([System.Management.Automation.WildcardPattern]::Escape($target)) -Global -Force -DisableNameChecking -ErrorAction Stop
         $loaded = $true
       }
       catch {

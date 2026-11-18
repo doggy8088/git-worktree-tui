@@ -89,7 +89,7 @@ foreach ($cols in 30, 48, 60, 120) {
 # 很窄的終端機：一列放不下完整資訊時，要先省略 commit、再省略分支、最後只留路徑。
 # 完整的一列至少要 前綴 7 + 路徑 4 + 間隔 2 + […] (7 碼 hash) 13 = 26 欄；
 # 在這之下如果硬塞，一列會折成兩行，重繪與收尾算的列數就會錯，畫面留下殘影。
-foreach ($fx in 'longname', 'shop', 'cjk') {
+foreach ($fx in 'longname', 'shop', 'cjk', 'emoji') {
   $count = Get-FixtureCount (Join-Path $env:GWT_FIXTURE $fx)
   foreach ($cols in 17, 20, 24, 25, 26, 27, 30) {
     Enter-Fixture $fx
@@ -108,6 +108,20 @@ foreach ($fx in 'longname', 'shop', 'cjk') {
     Assert-Screen "$fx $cols 欄：只畫第一個畫面時 $count 筆各佔一列" "^ITEM_ROWS=$count$" $screen0
     Assert-Screen "$fx $cols 欄：只畫第一個畫面時沒有任何一列折行（WRAPS=0）" '^WRAPS=0$' $screen0
   }
+}
+
+# 路徑與分支含寬度為 2 的符號（⚡ ⌚ ✅ ⭐，基本多文種平面但不在 CJK 範圍；🔥 是代理對）：
+# 一般寬度也不能折行。欄寬是「欄」不是「字元數」：30 個 ⚡ 的分支名是 60 欄。
+$emojiCount = Get-FixtureCount (Join-Path $env:GWT_FIXTURE 'emoji')
+foreach ($cols in 40, 50, 60, 80, 100, 120) {
+  Enter-Fixture 'emoji'
+  $r = Invoke-Gwt -Keys '<down>' -Rows 14 -Cols $cols
+  $screen = Get-ScreenReplay -Text $r.Raw -Rows 14 -Cols $cols
+  Assert-Screen "emoji $cols 欄：$emojiCount 筆各佔一列" "^ITEM_ROWS=$emojiCount$" $screen
+  Assert-Screen "emoji $cols 欄：沒有重複的列" '^DUPLICATES=-$' $screen
+  Assert-Screen "emoji $cols 欄：沒有任何一列折行（WRAPS=0）" '^WRAPS=0$' $screen
+  $first = Invoke-Gwt -Keys '' -Rows 14 -Cols $cols
+  Assert-Screen "emoji $cols 欄：只畫第一個畫面時沒有任何一列折行" '^WRAPS=0$' (Get-ScreenReplay -Text $first.Raw -Rows 14 -Cols $cols)
 }
 
 # 收尾也一樣：窄到要省略資訊時，選完後整塊都要擦乾淨
