@@ -92,7 +92,10 @@ function Get-ScreenReplay {
           $state.Col = [math]::Min($Cols - 1, $cc - 1)
         }
         'K' {
-          if ($first -eq 2) { & $blank $state.Row; $state.Col = 0 }
+          # ESC[2K 清掉整列，但「不移動游標」（EL 的定義）。gwt 自己的畫面每次都先送 \r 再送
+          # ESC[2K，所以游標怎樣都在行首；ConPTY 的輸出則會在游標已經移到某一欄之後才送 ESC[2K，
+          # 這時把游標歸零會讓後面的文字畫到錯的位置。
+          if ($first -eq 2) { & $blank $state.Row }
           elseif ($first -eq 1) { for ($c = 0; $c -le $state.Col; $c++) { $grid[$state.Row][$c] = ' ' } }
           else { for ($c = $state.Col; $c -lt $Cols; $c++) { $grid[$state.Row][$c] = ' ' } }
         }

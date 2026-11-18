@@ -18,8 +18,8 @@
   `-Uninstall`，以及給 `iex` 用的 `GWT_VERSION`／`GWT_INSTALL_DIR`／`GWT_PROFILE`。沒指定版本而最新的
   release 還沒有 PowerShell 版時，會明說並改裝 `main`。不會改執行原則，只會在 profile 載不進來時警告。
 - README 與官方網站加上 PowerShell 的安裝指令（各有自己的複製按鈕）、環境變數與結束狀態的 PowerShell 寫法。
-- 測試：新增 `tests/pwsh/`（25 個測試檔：17 個單元——含 `install.ps1` 對 16 種 profile 內容的安裝／移除逐位元組還原、
-  以本機伺服器走完整的 `irm | iex` 流程、擋掉「PowerShell 7.0 上會壞的 API」的相容性防線；
+- 測試：新增 `tests/pwsh/`（26 個測試檔：18 個單元——含 `install.ps1` 對 16 種 profile 內容的安裝／移除逐位元組還原、
+  以本機伺服器走完整的 `irm | iex` 流程、擋掉「PowerShell 7.0 上會壞的 API」的相容性防線、畫面重播器本身的語意測試；
   5 個以測試掛鉤餵按鍵並重播畫面、3 個在 ConPTY 真主控台裡送真按鍵），只需要 `pwsh` 7 與 git，不需要 bash、python 或 Pester。`make test-pwsh` 或
   `pwsh tests/pwsh/run.ps1`。CI 新增 `windows-latest` 工作。
 - 選單內按 `/` 進入模糊搜尋：以子序列比對分支名稱與路徑的最後一層目錄，
