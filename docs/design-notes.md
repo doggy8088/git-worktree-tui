@@ -582,6 +582,12 @@ zsh 版靠 `pty.fork` 開真的 PTY；Windows 沒有，而且 `[Console]::ReadKe
    `tests/pwsh/lib/Screen.ps1` 重播成最終畫面。與 `screen.py` 的差別：全形字佔兩個儲存格而且放不下
    時整個換行（中文路徑的折行錯誤只有這樣抓得到）；`\n` 視為換行加歸位（真實終端機的行為，
    zsh 版靠 PTY 的 ONLCR 免費得到）。
+   重播器本身有自己的測試（`cases/18-screen-replay.ps1`）：所有排版斷言都建立在它重播得跟真實終端機一樣
+   之上，它如果有誤，不是放過真的錯誤，就是讓沒有錯的東西失敗，不能只靠「用它的測試都通過」證明它是對的。
+   code review 就抓到一個：`ESC[2K` 清掉整列但**不移動游標**，重播器卻把游標歸零。gwt 自己的畫面每次都
+   先送 `\r` 再送 `ESC[2K`，所以按鍵驅動的測試看不出來；但 ConPTY 的輸出會在游標已移到某一欄之後才送
+   `ESC[2K`，歸零會讓後面的文字畫到錯的位置。`screen.py` 有同樣的寫法（`clear_line` 會把 `col` 歸零），
+   zsh 版沒有受影響的原因同樣是 gwt 的畫法總是先送 `\r`，沒有改它。
 2. **真主控台**（`tests/pwsh/cases-console/`）：`tests/pwsh/lib/ConPty.ps1` 用 `CreatePseudoConsole`
    把真正的 pwsh 掛在偽主控台上，送 VT 位元組當按鍵，把 ConPTY 重新渲染後的輸出重播成畫面。
    這一層驗證掛鉤之外的部分：`ReadKey`、Esc 與方向鍵的翻譯、`TreatControlCAsInput`、`$Host.UI.Write`、
