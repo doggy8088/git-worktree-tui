@@ -120,7 +120,9 @@ jobs:
             return
           }
 
+          # Save-PSResource 不會替你建立 -Path 指的目錄，目錄不存在會在參數繫結就失敗（v0.2.0 第一次發佈就踩到）
           $save = Join-Path $env:RUNNER_TEMP 'smoke'
+          New-Item -ItemType Directory -Path $save -Force | Out-Null
           Save-PSResource -Name gwt -Version $version -Repository PSGallery -Path $save -TrustRepository
           $env:PSModulePath = $save + [System.IO.Path]::PathSeparator + $env:PSModulePath
           $reported = (& pwsh -NoProfile -Command 'gwt --version') -join ''
