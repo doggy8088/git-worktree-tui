@@ -162,7 +162,29 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 | `-Uninstall`   |                   | 移除                                                         |
 | `-Help`        |                   | 顯示說明                                                     |
 
-#### 方式二：手動
+#### 方式二：PowerShell Gallery
+
+gwt 也發佈在 [PowerShell Gallery](https://www.powershellgallery.com/packages/gwt)（從 v0.2.0 起）：
+
+```powershell
+Install-PSResource gwt                  # PowerShell 7.4 以上（內建 PSResourceGet）
+Install-Module gwt -Scope CurrentUser   # PowerShell 7.0～7.3
+```
+
+第一次從 PSGallery 安裝時，可能會問你是否信任這個來源，回答 `Y` 即可。只裝在你自己的帳號底下，不需要系統管理員權限。
+
+裝完不必改 profile：第一次打 `gwt` 時 PowerShell 會自動載入模組，連執行安裝的那個視窗也一樣。
+
+更新與移除：
+
+```powershell
+Update-PSResource gwt       # PowerShell 7.0～7.3：Update-Module gwt
+Uninstall-PSResource gwt    # PowerShell 7.0～7.3：Uninstall-Module gwt
+```
+
+**不要和方式一同時使用。** 方式一會在 profile 加一行 `Import-Module`，開新視窗時先載入 `~\.gwt` 的那一份，Gallery 裝的那一份就不會被用到，看起來會像「更新了卻沒變」。要換方式，先移除原本的：方式一用上面的 `-Uninstall`，方式二用 `Uninstall-PSResource gwt`。
+
+#### 方式三：手動
 
 把 `gwt.psm1` 放到你喜歡的位置，在 `$PROFILE.CurrentUserAllHosts` 加一行：
 

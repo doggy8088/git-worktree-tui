@@ -4,7 +4,17 @@
 
 ## [未發布]
 
+### 新增
+
+- README 加上從 PowerShell Gallery 安裝的方式：`Install-PSResource gwt`（PowerShell 7.4 以上；7.0～7.3 用
+  `Install-Module`）、更新與移除，以及「不要和一行安裝同時使用」的提醒。手動安裝改為方式三。
+
 ### 變更
+
+- `docs/publishing.md` 依第一次實際發佈更新：Gallery 畫面上實際的欄位與選項字樣、目前使用的 key
+  （只能推送新版本）、環境設定補上 `can_admins_bypass: false`、`gh secret set` 收到空輸入也會成功的陷阱、
+  workflow 失敗但版本已送出時怎麼判斷。並修正一個會誤導的說明：換 key 時原本寫「參數同上」，照做會建立
+  能推送新套件、權限過寬的 key。
 
 - 新增 `.gitattributes`：所有文字檔在每個平台都以 LF 取出。v0.2.0 在 Windows runner 上打包，
   PowerShell Gallery 上的三個檔案因此是 CRLF（內容與 tag 相同，位元組不同）；之後發佈的位元組會與 tag 相同。
