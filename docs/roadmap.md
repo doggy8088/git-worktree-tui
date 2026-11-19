@@ -30,32 +30,6 @@ gwt fea<TAB>   # 補出符合的 worktree 路徑
 
 目前順序完全照 Git 的輸出（依路徑排序）。可以加 `GWT_SORT=path|recent|branch`，用 `zstat` 讀目錄的 mtime 做「最近用過」排序。
 
-### 5a. zsh 版：把 PowerShell 版 code review 找到的問題補回來
-
-PowerShell 版開發與 code review 時，發現 `gwt.zsh` 的程式碼有下面四個同樣的結構。PowerShell 版都已修正並有
-重現的測試（[design-notes 第 17.6、17.9 節](design-notes.md)）。**下面是對照 `gwt.zsh` 讀程式碼得到的結論，沒有
-實際在 zsh 上重現**（寫 PowerShell 版時沒有 zsh 可跑），動手前先用 PTY 測試確認：
-
-1. **多位數編號的第一位數不必等待。** [design-notes 第 10 節](design-notes.md) 寫「若已輸入的數字再加一位就會超過
-   總數，立刻結束等待」，但 `_gwt_pick_number` 是讀到第二位數「之後」才判斷，所以第一位數一律要等滿
-   `GWT_DIGIT_TIMEOUT`：12 筆時按 `9` 明明不可能再接第二位數，仍然白等 0.4 秒。在 `while` 迴圈開頭加一行
-   `(( 10#$digits * 10 > _GWT_COUNT )) && break` 即可。
-2. **被忽略的數字會弄掉目前的選取。** `_gwt_pick_number` 無條件 `_GWT_SELECTED=$(( 10#$digits ))`；5 筆時按 `9`
-   被主迴圈忽略，但 `_GWT_SELECTED` 已經是 9：光棒消失、Enter 回傳失敗。應該先確認在範圍內才指定。
-3. **等第二位數時收到的 `Ctrl+C` 位元組會被丟掉。** 一般情況下 `Ctrl+C` 是 SIGINT，由 `INT` trap 處理，不受影響；
-   但終端機關掉 `ISIG`、`Ctrl+C` 以 `$'\x03'` 進來時（主迴圈另外處理過這種情況），`_gwt_pick_number` 會把它放進
-   `_GWT_PENDING_KEY`，之後數字有效就直接 `return 0`，沒人看那個按鍵。`_gwt_pick_number` 回來後要先檢查它。
-4. **很窄的終端機會折行。** 一列至少要 26 欄，而寬度下限是 24（`(( w < 24 )) && w=24`）；放不下時要依序省略
-   commit、分支，不能硬把路徑夾到 4 欄。
-5. **欄寬表缺了「基本多文種平面裡寬度為 2 的 emoji 符號」。** `_gwt_swidth` 只有 CJK 與全形的範圍，`⚡ ⌚ ✅ ⭐`
-   （U+26A1、U+231A、U+2705、U+2B50 等，East Asian Width 是 W）被當成 1 欄；分支或路徑含這些符號時，在把它們
-   畫成 2 欄的終端機上一列會比算出來的寬而折行。PowerShell 版已補上完整的範圍（[design-notes 17.12](design-notes.md)），
-   `site/assets/app.js` 的示範選單如果也算欄寬，同樣要看。zsh 的 `[$'⺀'-$'꓏']` 這種字元範圍比對要補的範圍
-   不少，建議照 `tests/pwsh/lib/WidthOracle.ps1` 的逐字清單先寫測試。
-
-每一項都要補測試：1 用「按 `9` 的耗時」，2 用 PTY 送 `9\n`，3 要先把 PTY 的 `ISIG` 關掉再送 `1\x03`，
-4 用 25 欄的 PTY 重播畫面檢查沒有重複的列。
-
 ## 中期（需要設計討論）
 
 ### 6. 整合 fzf
@@ -112,10 +86,10 @@ gwt() {
 
 - **Windows PowerShell 5.1**：內建的藍色那個。主控台預設不吃 VT 序列、預設編碼是 ANSI、沒有三元運算子與 `&&`，
   不是改幾行的事；目前明確不支援（安裝腳本在 5.1 裡會請使用者改用 `pwsh`）。
-- **發佈到 PowerShell Gallery**：流程已建好（`gwt.psd1`、`tools/Build-PSGalleryPackage.ps1`、
-  `.github/workflows/publish-psgallery.yml`，見 [publishing.md](publishing.md)），第一次發佈需要維護者先在
-  Gallery 建立 API key、在 GitHub 建立 `psgallery` 環境。PowerShell Gallery **不支援 Trusted publishing（OIDC）**，
-  所以用 API key；追蹤 [PowerShell/PowerShellGallery#353](https://github.com/PowerShell/PowerShellGallery/issues/353)，
+- **PowerShell Gallery 改用 Trusted publishing**：v0.2.0 起透過 GitHub Actions 發佈到
+  [PowerShell Gallery](https://www.powershellgallery.com/packages/gwt)（見 [publishing.md](publishing.md)），
+  但 Gallery **不支援 Trusted publishing（OIDC）**，所以還是要用一把會過期的 API key。追蹤
+  [PowerShell/PowerShellGallery#353](https://github.com/PowerShell/PowerShellGallery/issues/353)，
   支援之後換掉 workflow 裡取得憑證的那一步，並刪掉 key 與 GitHub 的祕密。
 - **macOS／Linux 的 `pwsh`**：程式本身沒有 Windows 專屬 API，理論上能跑，但沒驗證也沒有 CI。
   要支援的話先把 `tests/pwsh/run.ps1` 掛上 ubuntu／macos 的 CI 看哪些測試會紅。

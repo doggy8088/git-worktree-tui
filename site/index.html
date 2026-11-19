@@ -286,8 +286,8 @@ detached</code></pre>
     </div>
     <div class="tiles">
       <div class="tile tile-accent">
-        <p class="tile-num">61</p>
-        <p class="tile-cap">個測試檔：zsh 34、PowerShell 27</p>
+        <p class="tile-num">67</p>
+        <p class="tile-cap">個測試檔：zsh 40、PowerShell 27</p>
       </div>
       <div class="tile tile-paper">
         <p class="tile-num">3</p>
@@ -372,6 +372,7 @@ detached</code></pre>
         <div class="card-body" id="a6" role="region" aria-labelledby="q6" hidden>
           <p>zsh：再跑一次安裝腳本就是最新版——它會抓最新的 release，換掉 <code>~/.zsh/gwt.zsh</code>，<code>.zshrc</code> 不必再動。要固定版本就在指令後面加 <code>--version v0.1.0</code>。</p>
           <p>PowerShell：同樣再跑一次 <code>irm https://gwt.gh.miniasp.com/install.ps1 | iex</code>，它會換掉 <code>~\.gwt\gwt.psm1</code>，profile 不必再動。要固定版本就改跑 <code>&amp; ([scriptblock]::Create((irm https://gwt.gh.miniasp.com/install.ps1))) -Version vX.Y.Z</code>；移除則把最後的參數換成 <code>-Uninstall</code>。</p>
+          <p>PowerShell 版也發佈在 <a href="https://www.powershellgallery.com/packages/gwt">PowerShell Gallery</a>：用 <code>Install-PSResource gwt</code> 安裝的，就用 <code>Update-PSResource gwt</code> 更新（PowerShell 7.0～7.3 是 <code>Install-Module</code>／<code>Update-Module</code>）。它和上面的一行安裝擇一使用，不要兩種都裝。</p>
         </div>
       </article>
 

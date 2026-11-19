@@ -549,12 +549,12 @@ gwt 切過去之後 `cd -` 不會回到切換之前的目錄，而是跳到一�
   也就不需要 `GWT_ESC_TIMEOUT`（設了不會有作用）。
 - `Ctrl+C`：選單期間 `[Console]::TreatControlCAsInput = $true`，讓它變成一般按鍵，由我們自己
   決定清理與結束碼（130）；`finally` 一定會還原它與游標，例外或強制中止也一樣。
-- 多位數編號：用 `[Console]::KeyAvailable` 搭配 `Stopwatch` 輪詢。**與 zsh 版刻意不同**：第 10 節
-  寫「若已輸入的數字再加一位就會超過總數，立刻結束等待」，但 zsh 版的程式是讀到第二位數之後才判斷，
-  所以第一位數一律要等滿 `GWT_DIGIT_TIMEOUT`。PowerShell 版把判斷放在等待之前，12 筆時按 `9` 或
-  `3` 立刻跳轉，只有 `1` 要等。zsh 版可以比照修正（見 roadmap）。
-- 數字鍵還有兩件事 PowerShell 版處理了（code review 時發現，在 PowerShell 版都有重現的測試）。`gwt.zsh` 的程式碼
-  看起來有同樣的結構，但沒有在 zsh 上實測，見 roadmap 5a：
+- 多位數編號：用 `[Console]::KeyAvailable` 搭配 `Stopwatch` 輪詢。第 10 節寫「若已輸入的數字再加一位就會
+  超過總數，立刻結束等待」，但 zsh 版原本是讀到第二位數之後才判斷，所以第一位數一律要等滿
+  `GWT_DIGIT_TIMEOUT`。PowerShell 版把判斷放在等待之前，12 筆時按 `9` 或 `3` 立刻跳轉，只有 `1` 要等。
+  0.2.1 起 zsh 版也一樣（`tests/cases-pty/24-digit-no-wait.zsh` 量耗時：修正前 5.36 秒，等滿了 5 秒的 timeout）。
+- 數字鍵還有兩件事（PowerShell 版 code review 時發現，兩版都有重現的測試；zsh 版在 0.2.1 修正，
+  `tests/cases-pty/25-digit-ignored-keeps-selection.zsh` 與 `26-ctrl-c-while-waiting-digit.zsh`，修正前都失敗）：
   - **被忽略的數字不能弄掉目前的選取。** `Invoke-GwtPickNumber` 只「回傳」解析出的編號，由呼叫端確認
     在範圍內才指定給 `Selected`。5 筆時按 `9`、12 筆時按 `13` 會被忽略，光棒要留在原處、Enter 仍可確認；
     原本是先把 `Selected` 蓋成 9，光棒消失、Enter 回傳失敗、↑ 從 9 往下算。
@@ -626,9 +626,10 @@ zsh 版靠 `pty.fork` 開真的 PTY；Windows 沒有，而且 `[Console]::ReadKe
 
 ### 17.9 很窄的終端機：資訊要依序省略，不能折行
 
-「每一列必須只佔一個實體行」是重繪與收尾的前提（第 4、15 節）。zsh 版把路徑最少保留 4 欄，後方
+「每一列必須只佔一個實體行」是重繪與收尾的前提（第 4、15 節）。zsh 版原本把路徑最少保留 4 欄，後方
 `[分支] (commit)` 的固定成本是 13 欄，前綴 7 欄、間隔 2 欄，所以一列至少 26 欄；終端機再窄，硬把路徑
-夾到 4 欄就會讓整列超出寬度而折行，之後往上移 N 行算錯、留下殘影。PowerShell 版改成放不下時依序省略：
+夾到 4 欄就會讓整列超出寬度而折行，之後往上移 N 行算錯、留下殘影。PowerShell 版先改成放不下時依序省略，
+0.2.1 起 zsh 版相同：
 
 1. 完整：`[分支] (commit) (目前位置)`
 2. 路徑連 4 欄都分不到 → 拿掉 commit 與目前位置，只留 `[分支]`，分支再依剩下的欄寬截斷
@@ -636,7 +637,10 @@ zsh 版靠 `pty.fork` 開真的 PTY；Windows 沒有，而且 `[Console]::ReadKe
 
 寬度下限也從 24 降到 16（17 欄的終端機，二位數編號時路徑還剩 8 欄）；`cases-keys/04-window.ps1` 在
 17–30 欄、三個 fixture（含中文）下確認每筆各佔一列，`cases-console/02-render.ps1` 在真的 25 欄 ConPTY
-確認一次。zsh 版有同樣的問題（見 roadmap）。
+確認一次。zsh 版由 `tests/cases-pty/27-narrow-25-cols.zsh` 與 `28-narrow-20-cols.zsh` 在 25、20 欄的 PTY 確認：
+畫面重播器的 `WRAPS`（折行次數）為 0、路徑看得到開頭、沒有 `(commit)`。修正前兩個都是 `WRAPS=10`——值得一提的是
+`DUPLICATES` 仍然是 `-`，只看「有沒有重複的列」抓不到這個問題，所以重播器才加了 `WRAPS`。
+重播器把每個字元都算 1 欄，`WRAPS` 只對 ASCII 內容準確，這兩個測試因此只用 ASCII 的 fixture。
 
 ### 17.10 install.ps1 的 profile 還原規則
 
@@ -694,7 +698,8 @@ zsh 版靠 `pty.fork` 開真的 PTY；Windows 沒有，而且 `[Console]::ReadKe
 - [ ] 路徑含中文、含空白的 worktree，選單每一列都只佔一行（全形字與 `…` 的欄寬在實際字型下一致）
 - [ ] 發佈後跑一次真的 `irm https://gwt.gh.miniasp.com/install.ps1 | iex`（GitHub Pages 對 `.ps1`
       送什麼 Content-Type 沒辦法事先驗證；本機用 `application/octet-stream` 且沒有 charset 的伺服器測過，
-      `cases/17-install-iex.ps1` 每次都會跑這個流程）
+      `cases/17-install-iex.ps1` 每次都會跑這個流程）。v0.2.0 發佈後跑過一次：非互動的 `pwsh` 子程序、
+      安裝目錄與 profile 都指到暫存位置，線上腳本裝到 v0.2.0、寫入 profile 區塊、載入正常；不是在真的終端機裡
 - [ ] **PowerShell 7.0（.NET Core 3.1）上實際執行 `pwsh tests/pwsh/run.ps1`。** 文件宣稱支援 7.0，但開發
       與 CI 都是新版：code review 才發現 `install.ps1` 用了 .NET 5 才有的 `SHA256.HashData` 與
       `Convert.ToHexString`，在 7.0 上安裝與移除都會丟例外，而 7.7 上完全看不出來。已改用 .NET Core 3.1 就有的
@@ -706,7 +711,7 @@ macOS／Linux 的 `pwsh` 沒有驗證，也沒有 CI。
 
 選單的每一列必須只佔一個實體行（第 4、15、17.9 節），而「一列有多寬」取決於每個字元佔幾欄。
 
-**表要完整。** zsh 版（以及最初的 PowerShell 移植）的寬度表只有 CJK 與全形的範圍。但 `⚡`（U+26A1）、`⌚`
+**表要完整。** 0.2.1 以前的 zsh 版（以及最初的 PowerShell 移植）的寬度表只有 CJK 與全形的範圍。但 `⚡`（U+26A1）、`⌚`
 （U+231A）、`✅`（U+2705）、`⭐`（U+2B50）這類 emoji 符號在基本多文種平面（BMP），不在 CJK 範圍裡，
 Unicode 的 East Asian Width 卻是 W（佔 2 欄）。它們被當成 1 欄，一列就比算出來的寬：路徑或分支名稱含這些符號
 （例如一個 30 個 `⚡` 的分支，實際 60 欄），在把它們畫成 2 欄的終端機上就會折行，重繪與收尾的列數對不上。
@@ -720,6 +725,10 @@ Unicode 的 East Asian Width 卻是 W（佔 2 欄）。它們被當成 1 欄，�
 `cases/08-width.ps1` 與 `cases/18-screen-replay.ps1` 兩個實作各自對照同一份清單。清單也放了陷阱：夾在 CJK 範圍
 中間卻是窄的 `U+303F`、預設是文字呈現而非 emoji 呈現的 `☀ ⚠ ✔`、半形片假名。
 
+**zsh 版用同一張表（0.2.1 起）。** `gwt.zsh` 的 `_GWT_WIDE` 是從 `$script:WideBmp` 機械轉換成 `$'\uXXXX'` 的字元範圍，
+兩邊逐字相同；基本多文種平面以外（U+10000 起）一律 2 欄，也與 PowerShell 版相同。`tests/cases/12-width-oracle.zsh`
+直接讀 `WidthOracle.ps1`（不另抄一份），59 個字元逐一對照；修正前錯了 37 個（包括 U+303F：舊表的 `⺀-꓏` 一段把它算成 2 欄）。
+
 **各家終端機的看法不一樣（實測）。** Unicode 與 Windows Terminal 把 `⚡ ⌚` 畫成 2 欄；這台 Windows 10 的 conhost
 （Unicode 表較舊，那兩個字元當時還不是 W）畫成 1 欄。後果不對稱：
 - gwt 當成 2 欄、終端機畫成 1 欄：一列只是短一點，什麼都不會壞。
@@ -732,7 +741,7 @@ shop／cjk／emoji 在 25–80 欄的檢查都失敗，在 100 欄（放得下�
 
 **已知限制。** 寬度 0 的字元（組合記號、零寬連接符 ZWJ、變體選擇符 `U+FE0F`）沒有處理：`❤️`（`U+2764` 加
 `U+FE0F`）在某些終端機會被畫成 2 欄，gwt 算 1 欄；ZWJ 組出的家庭、旗幟等序列也是。路徑與分支名稱含這些的
-機會很小，沒有處理。zsh 版的寬度表有同樣的缺口（見 roadmap 5a）。
+機會很小，沒有處理。zsh 版用同一張表，限制也相同。
 
 ## 附錄：文章中刻意保留的行為
 
