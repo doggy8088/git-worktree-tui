@@ -9,7 +9,7 @@
 #
 @{
   RootModule            = 'gwt.psm1'
-  ModuleVersion         = '0.2.0'
+  ModuleVersion         = '0.2.1'
   GUID                  = '262ddb7e-0c4d-499b-b21b-0f3754c8cdbd'
   Author                = 'Will 保哥 (Will Huang)'
   Copyright             = '(c) 2026 Will 保哥 (Will Huang). MIT License.'
