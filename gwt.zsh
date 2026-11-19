@@ -187,16 +187,28 @@ _gwt_strip_ansi() {
   REPLY="$out$s"
 }
 
+# 寬度為 2 的「基本多文種平面」字元：Unicode 的 East Asian Width 是 W（Wide）或 F（Fullwidth）。
+# 不只 CJK：⚡ ⌚ ✅ ⭐ 這類 emoji 符號也在基本多文種平面、也佔 2 欄；只有 CJK 範圍的表會把它們當成
+# 1 欄，一列就比算出來的寬而折行，重繪與收尾的列數對不上。
+# 這張表與 gwt.psm1 的 $script:WideBmp 逐字相同（由它機械轉換而來，改一邊就要改另一邊）。
+# 注意 U+303F 夾在 CJK 範圍中間卻是窄的，所以那一段是 U+2E80–U+303E 與 U+3041–U+A4CF 兩段。
+typeset -g _GWT_WIDE=$'[\u1100-\u115f\u231a\u231b\u2329\u232a\u23e9-\u23ec\u23f0\u23f3\u25fd\u25fe\u2614\u2615\u2648-\u2653\u267f\u2693\u26a1\u26aa\u26ab\u26bd\u26be\u26c4\u26c5\u26ce\u26d4\u26ea\u26f2\u26f3\u26f5\u26fa\u26fd\u2705\u270a\u270b\u2728\u274c\u274e\u2753-\u2755\u2757\u2795-\u2797\u27b0\u27bf\u2b1b\u2b1c\u2b50\u2b55\u2e80-\u303e\u3041-\ua4cf\ua960-\ua97f\uac00-\ud7a3\uf900-\ufaff\ufe10-\ufe19\ufe30-\ufe6f\uff00-\uff60\uffe0-\uffe6]'
+# 基本多文種平面以外（🔥 等 emoji、CJK 擴充區）一律算 2 欄，與 PowerShell 版相同。
+typeset -g _GWT_ASTRAL=$'[\U00010000-\U0010ffff]'
+
 # 計算字串在終端機上的欄寬，結果放在 _GWT_SW。
+# 測試對照逐字寫死的 Unicode 標準答案（tests/pwsh/lib/WidthOracle.ps1，與 PowerShell 版共用）。
 _gwt_swidth() {
   local s=$1 c
+  # 全是 ASCII（最常見）就不必逐字比對
+  if [[ $s != *[^$'\x01'-$'\x7f']* ]]; then
+    _GWT_SW=${#s}
+    return 0
+  fi
   local -i i n=${#1} w=0
   for (( i = 1; i <= n; i++ )); do
     c=${s[i]}
-    if [[ $c == [$'\u1100'-$'\u115f'] || $c == [$'\u2e80'-$'\ua4cf'] ||
-          $c == [$'\uac00'-$'\ud7a3'] || $c == [$'\uf900'-$'\ufaff'] ||
-          $c == [$'\uFE30'-$'\uFE4F'] || $c == [$'\uff00'-$'\uff60'] ||
-          $c == [$'\uffe0'-$'\uffe6'] ]]; then
+    if [[ $c == ${~_GWT_WIDE} || $c == ${~_GWT_ASTRAL} ]]; then
       (( w += 2 ))
     else
       (( w += 1 ))
@@ -264,9 +276,11 @@ _gwt_init_size() {
     (( w <= 0 )) && w=80
   fi
   (( h < 6 )) && h=6
-  # 多留一欄，避免最後一欄剛好觸發終端機自動換行
+  # 多留一欄，避免最後一欄剛好觸發終端機自動換行。
+  # 下限 16（17 欄的終端機），與 PowerShell 版相同：再窄，連「編號 + 最短的路徑」都放不下，只能折行。
+  # 放不下完整的後方資訊時由 _gwt_format_row 依序省略 commit、分支，所以 17～25 欄也不會折行。
   w=$(( w - 1 ))
-  (( w < 24 )) && w=24
+  (( w < 16 )) && w=16
   _GWT_HEIGHT=$h
   _GWT_WIDTH=$w
 }
@@ -587,13 +601,36 @@ _gwt_format_row() {
 
   _gwt_width_of "$suffix"
   local -i avail=$(( _GWT_WIDTH - ${#prefix} - gap - _GWT_SW ))
-  (( avail < 4 )) && avail=4
+
+  # 完整的後方資訊放不下（路徑連最短的 4 欄都分不到）時，不能硬把路徑夾到 4 欄：
+  # 一列會折成兩行，重繪與收尾算的列數就錯，畫面留下殘影。依序省略：先拿掉 commit
+  # 只留 [分支]，再放不下就連分支都拿掉，整列只剩編號與路徑。（與 PowerShell 版相同）
+  local -i min_path=4 room
+  if (( avail < min_path )); then
+    room=$(( _GWT_WIDTH - ${#prefix} - gap - min_path - 2 ))   # 扣掉 [ ] 兩欄
+    if (( room >= 1 )); then
+      _gwt_clip_middle "$branch" "$room"
+      suffix="${_GWT_S_BRANCH}[${REPLY}]${_GWT_S_RESET}"
+      _gwt_width_of "$suffix"
+      avail=$(( _GWT_WIDTH - ${#prefix} - gap - _GWT_SW ))
+    else
+      suffix=''
+      avail=$(( _GWT_WIDTH - ${#prefix} ))
+    fi
+  fi
+  (( avail < 1 )) && avail=1
   _gwt_clip_middle "$wt_path" "$avail"
   local shown=$REPLY
 
   if (( sel )); then
     # 光棒只反白到路徑為止，後方分支與狀態維持原色
-    REPLY="${_GWT_S_BAR}${prefix}${shown} ${_GWT_S_RESET} ${suffix}"
+    if [[ -z $suffix ]]; then
+      REPLY="${_GWT_S_BAR}${prefix}${shown}${_GWT_S_RESET}"
+    else
+      REPLY="${_GWT_S_BAR}${prefix}${shown} ${_GWT_S_RESET} ${suffix}"
+    fi
+  elif [[ -z $suffix ]]; then
+    REPLY="${prefix}${shown}"
   else
     REPLY="${prefix}${shown}  ${suffix}"
   fi
@@ -677,25 +714,34 @@ _gwt_shift() {
 
 # 數字鍵：worktree 超過 9 個時，再等一小段時間看是否還有第二位數字。
 # 例如清單有 12 筆時，按 1 再按 2 會跳到第 12 筆；只按 1 則等 timeout 後跳第 1 筆。
-# 若等待期間收到的是其他按鍵（例如 j），就交回主迴圈處理，不會被吃掉。
+#
+# 只把解析出的編號放在 REPLY，不動 _GWT_SELECTED：編號超出範圍（5 筆時按 9、12 筆時按 13）
+# 會被呼叫端忽略，這時目前的選取必須維持原樣，否則光棒會消失、Enter 會選到不存在的那一筆。
+#
+# 「再加一位就超過總數就不必等」這條，在等待「之前」就要判斷：12 筆時按 9，90 > 12，
+# 第二位數不可能有效，立刻跳轉，不能白等 GWT_DIGIT_TIMEOUT。
+#
+# 等待期間收到的不是數字的按鍵，放進 _GWT_PENDING_KEY 交給呼叫端：
+#   - Ctrl+C（終端機關掉 ISIG 時以 \x03 位元組進來）是中斷，呼叫端要直接中止，不能讓剛才的數字生效
+#   - 編號超出範圍時，主迴圈接著照一般按鍵處理它
+#   - 編號有效時選單隨即關閉，其他按鍵就沒有後續了（跟剛按完數字就立刻跳轉的短清單一致）
+# 這三點與 PowerShell 版（Invoke-GwtPickNumber）相同。
 _gwt_pick_number() {
   local digits=$1 more=''
   local -i maxlen=${#_GWT_COUNT}
-  if (( _GWT_COUNT > 9 )); then
-    while (( ${#digits} < maxlen )); do
-      if ! read -r -k 1 -s -t "${GWT_DIGIT_TIMEOUT:-0.4}" more; then
-        break
-      fi
-      if [[ $more == [0-9] ]]; then
-        digits="${digits}${more}"
-        (( 10#$digits * 10 > _GWT_COUNT )) && break
-      else
-        [[ -n $more ]] && _GWT_PENDING_KEY=$more
-        break
-      fi
-    done
-  fi
-  _GWT_SELECTED=$(( 10#$digits ))
+  while (( ${#digits} < maxlen )); do
+    (( 10#$digits * 10 > _GWT_COUNT )) && break
+    if ! read -r -k 1 -s -t "${GWT_DIGIT_TIMEOUT:-0.4}" more; then
+      break
+    fi
+    if [[ $more == [0-9] ]]; then
+      digits="${digits}${more}"
+    else
+      [[ -n $more ]] && _GWT_PENDING_KEY=$more
+      break
+    fi
+  done
+  REPLY=$(( 10#$digits ))
 }
 
 # 讀取 Esc 之後的序列，結果分類放在 _GWT_ESC_KIND：
@@ -729,6 +775,7 @@ _gwt_read_escape() {
 # 互動式選單。成功選定時回傳 0，取消或中斷時回傳非 0。
 _gwt_pick() {
   local key=''
+  local -i picked=0
   _GWT_SELECTED=1
   _GWT_PENDING_KEY=''
   _gwt_init_size
@@ -833,13 +880,23 @@ _gwt_pick() {
           ;;
         [1-9])
           _gwt_pick_number "$key"
-          if (( _GWT_SELECTED >= 1 && _GWT_SELECTED <= _GWT_COUNT )); then
+          picked=$REPLY
+          # 等第二位數的時候按了 Ctrl+C：是中斷。不論數字有沒有效都以中斷為準
+          if [[ $_GWT_PENDING_KEY == $'\x03' ]]; then
+            _GWT_PENDING_KEY=''
+            _GWT_INTERRUPTED=1
+            _gwt_finish
+            return 130
+          fi
+          if (( picked >= 1 && picked <= _GWT_COUNT )); then
+            _GWT_SELECTED=$picked
             # 先重畫一次，讓使用者看到最後落在哪一筆
             printf '\e[%dA' "$_GWT_DRAWN"
             _gwt_draw
             _gwt_finish
             return 0
           fi
+          # 超出範圍：忽略，目前的選取維持原樣
           ;;
         q|Q)
           _gwt_finish

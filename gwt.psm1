@@ -65,9 +65,10 @@ $script:CSI = [string][char]27 + '['
 $script:AsciiOnly = [regex]::new('^[\x00-\x7F]*$')
 # 寬度為 2 的「基本多文種平面」（BMP）字元：Unicode 的 East Asian Width 是 W（Wide）或 F（Fullwidth）。
 # 不只是 CJK：⚡ ⌚ ⌛ ✅ ❌ ⭐ ⭕ 這類 emoji 符號也在基本多文種平面，卻不在 CJK 範圍裡，一樣佔 2 欄。
-# 只有 CJK 範圍的表（zsh 版是這樣）會把它們當成 1 欄，一列就比算出來的寬，折行之後重繪與收尾
+# 只有 CJK 範圍的表（0.2.1 以前的 zsh 版是這樣）會把它們當成 1 欄，一列就比算出來的寬，折行之後重繪與收尾
 # 的列數對不上。基本多文種平面以外的字元（代理對，例如 🔥 與 CJK 擴充區）由 Get-GwtWidth 另外處理，一律 2 欄。
 # 測試用另一份獨立的實作與逐字寫死的 Unicode 標準答案對照（tests/pwsh/lib/WidthOracle.ps1）。
+# gwt.zsh 的 _GWT_WIDE 是從這張表機械轉換來的，兩邊逐字相同：改這裡就要一起改那裡。
 $script:WideBmp = [regex]::new(
   '[ᄀ-ᅟ⌚⌛〈〉⏩-⏬⏰⏳◽◾☔☕♈-♓♿⚓' +
   '⚡⚪⚫⚽⚾⛄⛅⛎⛔⛪⛲⛳⛵⛺⛽✅✊✋✨' +
@@ -360,7 +361,7 @@ function Initialize-GwtSize {
   }
   if ($h -lt 6) { $h = 6 }
   # 多留一欄，避免最後一欄剛好觸發終端機自動換行
-  # 下限 16（17 欄的終端機）：再窄，連 前綴 + 最短的路徑 都放不下，只能折行（zsh 版的下限是 24）
+  # 下限 16（17 欄的終端機）：再窄，連 前綴 + 最短的路徑 都放不下，只能折行（zsh 版 0.2.1 起相同）
   $w = $w - 1
   if ($w -lt 16) { $w = 16 }
   $script:Height = $h
@@ -913,8 +914,8 @@ function Wait-GwtKey {
 #   - 編號有效時選單隨即關閉，其他按鍵就沒有後續了（跟剛按完數字就立刻跳轉的短清單一致）
 #
 # 「再加一位就超過總數就不必等」這條，在等待「之前」就要判斷：12 筆時按 9，
-# 90 > 12，第二位數不可能有效，立刻跳轉。（zsh 版是讀到第二位數之後才判斷，
-# 所以第一位數一律要等滿 timeout；design-notes 第 10 節寫的是這裡的行為。）
+# 90 > 12，第二位數不可能有效，立刻跳轉。（design-notes 第 10 節寫的就是這個行為；
+# zsh 版原本是讀到第二位數之後才判斷，第一位數一律要等滿 timeout，0.2.1 起與這裡相同。）
 function Invoke-GwtPickNumber {
   param([string]$First)
   $digits = $First

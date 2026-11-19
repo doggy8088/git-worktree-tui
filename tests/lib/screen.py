@@ -26,6 +26,10 @@ stdout 的文字裡，只會表現在終端機的最終畫面上。要驗證「�
     INDEXES     出現過的編號（壓成區間，例如 11-20）
     DUPLICATES  重複出現的編號（正確的重繪不該有）
     SELECTED    光棒所在那一列的編號
+    WRAPS       寫滿一列之後又寫字、被迫折到下一行的次數（正確的排版不該有）
+
+欄寬：每個字元都算 1 欄（不認得全形字）。所以 WRAPS 只對 ASCII 內容準確——
+有全形字時實際更寬，這裡會少算；要用 WRAPS 驗折行的測試，fixture 必須只有 ASCII。
 """
 
 import argparse
@@ -42,6 +46,7 @@ class Screen:
         self.grid = [[" "] * cols for _ in range(rows)]
         self.row = 0
         self.col = 0
+        self.wraps = 0
 
     def _scroll(self) -> None:
         self.grid.pop(0)
@@ -54,9 +59,12 @@ class Screen:
             self._scroll()
 
     def put(self, ch: str) -> None:
+        # 與真實終端機一樣：寫到最後一欄之後不會馬上換行，要等下一個字元才折行
+        # （中間若先收到 \r 或 \n 就不會折）。所以這裡數到的就是真的折行。
         if self.col >= self.cols:
             self.col = 0
             self.newline()
+            self.wraps += 1
         self.grid[self.row][self.col] = ch
         self.col += 1
 
@@ -181,6 +189,7 @@ def main() -> int:
     print(f"INDEXES={compress(indexes)}")
     print(f"DUPLICATES={'-' if not duplicates else compress(sorted(duplicates))}")
     print(f"SELECTED={selected}")
+    print(f"WRAPS={screen.wraps}")
     return 0
 
 
