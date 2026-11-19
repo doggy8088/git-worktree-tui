@@ -4,25 +4,46 @@
 
 ## [未發布]
 
+## [0.2.1] - 2026-11-19
+
+zsh 版補上 PowerShell 版 code review 找到的五個問題（[roadmap 原本的 5a](https://github.com/doggy8088/git-worktree-tui/blob/v0.2.0/docs/roadmap.md)），
+兩個版本的行為從此一致。每一項都有新的測試，而且都先在未修正的程式上確認會失敗。PowerShell 版的程式沒有改，只改了版本號與註解。
+
+### 修正
+
+- **zsh 版：多位數編號的第一位數不必等。** 12 筆時按 `9`（再加一位就是 90 以上，一定超過總數）原本要白等
+  `GWT_DIGIT_TIMEOUT`，現在立刻跳轉；只有 `1` 這種還可能接第二位數的才等。
+- **zsh 版：被忽略的數字不再弄掉目前的選取。** 5 筆時按 `9` 會被忽略，但原本已經把選取改成 9：光棒消失、
+  Enter 選到不存在的第 9 筆。現在光棒留在原處，Enter 照常選原本那筆。
+- **zsh 版：等第二位數時按 `Ctrl+C` 是中斷。** 終端機關掉訊號轉換（`stty -isig`）、`Ctrl+C` 以位元組送進來時，
+  原本剛才的數字照樣生效、切換目錄、回傳成功；現在回傳 130、不切換。一般情況下 `Ctrl+C` 是訊號，本來就沒問題。
+- **zsh 版：很窄的終端機不再折行。** 一列放不下時依序省略 commit、分支，只留編號與路徑；寬度下限從 24 降到 16。
+  原本 25 欄以下每一列都會折成兩行，重繪後畫面留下殘影。現在 17 欄以上都正常（與 PowerShell 版相同）。
+- **zsh 版：欄寬表補齊。** `⚡ ⌚ ✅ ⭐` 這類寬度為 2 的 emoji 符號、`🔥` 等基本多文種平面以外的字元原本算 1 欄，
+  分支或路徑含這些時一列會比算出來的寬而折行；`U+303F` 原本反而多算成 2 欄。現在與 PowerShell 版用同一張表
+  （由 `gwt.psm1` 的表機械轉換而來）。
+- 發佈流程的「確認已上架」步驟：`Save-PSResource` 之前先建立目錄。v0.2.0 發佈時這一步失敗，
+  workflow 因此顯示失敗，但發佈本身成功（`gwt 0.2.0` 已在 Gallery 上，另外手動驗證過下載與執行）。
+
 ### 新增
 
 - README 加上從 PowerShell Gallery 安裝的方式：`Install-PSResource gwt`（PowerShell 7.4 以上；7.0～7.3 用
   `Install-Module`）、更新與移除，以及「不要和一行安裝同時使用」的提醒。手動安裝改為方式三。
+  官網「之後怎麼更新？」也補上 Gallery 的更新方式。
+- 測試：zsh 版新增 1 個單元測試與 5 個 PTY 互動測試，總數 40。欄寬測試直接讀 PowerShell 版的
+  `tests/pwsh/lib/WidthOracle.ps1`（逐字寫死的 Unicode 標準答案），兩個版本對同一份答案。
+  畫面重播器（`tests/lib/screen.py`）新增 `WRAPS`（折行次數）：窄終端機的問題只看「有沒有重複的列」抓不到。
 
 ### 變更
 
+- 新增 `.gitattributes`：所有文字檔在每個平台都以 LF 取出。v0.2.0 在 Windows runner 上打包，
+  PowerShell Gallery 上的三個檔案因此是 CRLF（內容與 tag 相同，位元組不同）；之後發佈的位元組會與 tag 相同。
 - `docs/publishing.md` 依第一次實際發佈更新：Gallery 畫面上實際的欄位與選項字樣、目前使用的 key
   （只能推送新版本）、環境設定補上 `can_admins_bypass: false`、`gh secret set` 收到空輸入也會成功的陷阱、
   workflow 失敗但版本已送出時怎麼判斷。並修正一個會誤導的說明：換 key 時原本寫「參數同上」，照做會建立
   能推送新套件、權限過寬的 key。
-
-- 新增 `.gitattributes`：所有文字檔在每個平台都以 LF 取出。v0.2.0 在 Windows runner 上打包，
-  PowerShell Gallery 上的三個檔案因此是 CRLF（內容與 tag 相同，位元組不同）；之後發佈的位元組會與 tag 相同。
-
-### 修正
-
-- 發佈流程的「確認已上架」步驟：`Save-PSResource` 之前先建立目錄。v0.2.0 發佈時這一步失敗，
-  workflow 因此顯示失敗，但發佈本身成功（`gwt 0.2.0` 已在 Gallery 上，另外手動驗證過下載與執行）。
+- README 與 design-notes 拿掉「zsh 版不一樣」的說明（多位數編號的等待、窄終端機的下限、欄寬表），
+  roadmap 移除已完成的 5a，並更新第 12 項 PowerShell Gallery 的狀態。
 
 ## [0.2.0] - 2026-11-19
 
