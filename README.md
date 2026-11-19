@@ -117,7 +117,7 @@ irm https://gwt.gh.miniasp.com/install.ps1 | iex
 $env:GWT_VERSION = 'vX.Y.Z'; irm https://gwt.gh.miniasp.com/install.ps1 | iex
 ```
 
-`vX.Y.Z` 換成想固定的 release 標籤。PowerShell 版是 v0.1.0 之後才加入的，所以 v0.1.0 本身沒有它；沒指定版本時，腳本會看最新的 release，如果它還不含 PowerShell 版（目前就是這種情況），會明說並改安裝 `main` 分支的最新版。
+`vX.Y.Z` 換成想固定的 release 標籤。PowerShell 版從 v0.2.0 起才有，所以 v0.1.0 沒有它，`-Version v0.1.0` 會明確失敗；沒指定版本時，腳本會安裝最新 release 的 `gwt.psm1`，如果最新的 release 還不含 PowerShell 版（例如 v0.2.0 發佈之前），會明說並改安裝 `main` 分支的最新版。
 
 移除：
 
