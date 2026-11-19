@@ -1,0 +1,128 @@
+name: Publish to PowerShell Gallery
+
+# 發佈到 PowerShell Gallery。設計原則與一次性設定見 docs/publishing.md。
+#
+# PowerShell Gallery 目前不支援 Trusted publishing（OIDC），所以要用 API key。key 是長效的祕密，
+# 整個流程都是為了把它能被拿到的機會降到最小：
+#   - 只有「發佈 GitHub release」會發佈；手動執行（workflow_dispatch）只做測試與打包的試跑，永遠不發佈
+#   - key 放在 GitHub 的 psgallery「環境」裡，環境要求核准，而且只放行 v* 的 tag
+#   - 測試與打包的 job 看不到 key；key 只出現在發佈 job 的一個步驟的環境變數裡
+#   - 沒有任何 token 權限；所有 action 都釘在 commit SHA，不用會被改動的版本標籤
+#   - 外部輸入（tag 名稱）只經由環境變數傳入，不直接展開進腳本，避免腳本注入
+# 等 PowerShell Gallery 支援 OIDC（https://github.com/PowerShell/PowerShellGallery/issues/353）時，
+# 只需要換掉「發佈」那一步取得憑證的方式。
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+# 預設什麼權限都沒有；各 job 只開自己需要的
+permissions: {}
+
+concurrency:
+  group: psgallery-publish
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: 測試與打包（這個 job 看不到任何祕密）
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: 執行測試
+        shell: pwsh
+        run: ./tests/pwsh/run.ps1
+
+      - name: 打包（版本必須等於 tag）
+        shell: pwsh
+        env:
+          # tag 名稱是外部輸入：用環境變數傳進來，不要把 ${{ }} 直接展開進 run 的內容
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
+        run: |
+          $params = @{ OutputDir = (Join-Path $env:RUNNER_TEMP 'psg') }
+          if ($env:RELEASE_TAG) { $params.Tag = $env:RELEASE_TAG }
+          ./tools/Build-PSGalleryPackage.ps1 @params | Out-Null
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gwt-package
+          path: ${{ runner.temp }}/psg/gwt
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: 發佈到 PowerShell Gallery
+    needs: verify
+    # 只有正式發佈的 release 才會走到這裡；預先發行（pre-release）與手動執行都不發佈
+    if: github.event_name == 'release' && !github.event.release.prerelease
+    runs-on: windows-latest
+    timeout-minutes: 45
+    # 環境 psgallery 要求核准，而且只放行 v* 的 tag；PSGALLERY_API_KEY 存在這個環境裡
+    environment: psgallery
+    permissions: {}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: gwt-package
+          # 資料夾名稱必須等於模組名稱
+          path: ${{ runner.temp }}/package/gwt
+
+      - name: 發佈
+        shell: pwsh
+        env:
+          PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+          PACKAGE_DIR: ${{ runner.temp }}/package/gwt
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrEmpty($env:PSGALLERY_API_KEY)) {
+            throw 'PSGALLERY_API_KEY 是空的：請確認 GitHub 環境 psgallery 裡有這個祕密（見 docs/publishing.md）'
+          }
+          if (-not (Get-Module -ListAvailable Microsoft.PowerShell.PSResourceGet)) {
+            Install-Module Microsoft.PowerShell.PSResourceGet -Scope CurrentUser -Force -Repository PSGallery
+          }
+          Import-Module Microsoft.PowerShell.PSResourceGet
+
+          $manifest = Import-PowerShellDataFile -LiteralPath (Join-Path $env:PACKAGE_DIR 'gwt.psd1')
+          $version = [string]$manifest.ModuleVersion
+
+          # Gallery 上的版本發佈之後不能刪除也不能覆蓋；已經有的版本就不要再送，直接說清楚
+          $existing = Find-PSResource -Name gwt -Version $version -Repository PSGallery -ErrorAction SilentlyContinue
+          if ($existing) { throw "gwt $version 已經在 PowerShell Gallery 上了，不能重複發佈。請提高版本號。" }
+
+          Publish-PSResource -Path $env:PACKAGE_DIR -Repository PSGallery -ApiKey $env:PSGALLERY_API_KEY
+          Write-Host "已送出 gwt $version"
+
+      # 這一步沒有 key：只確認 Gallery 上真的看得到、而且裝下來能用
+      - name: 確認已上架
+        shell: pwsh
+        env:
+          PACKAGE_DIR: ${{ runner.temp }}/package/gwt
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module Microsoft.PowerShell.PSResourceGet
+          $version = [string](Import-PowerShellDataFile -LiteralPath (Join-Path $env:PACKAGE_DIR 'gwt.psd1')).ModuleVersion
+
+          # 送出之後 Gallery 還要做驗證（病毒掃描等），通常幾分鐘內上架
+          $deadline = (Get-Date).AddMinutes(20)
+          $found = $null
+          while (-not $found -and (Get-Date) -lt $deadline) {
+            $found = Find-PSResource -Name gwt -Version $version -Repository PSGallery -ErrorAction SilentlyContinue
+            if (-not $found) { Start-Sleep -Seconds 30 }
+          }
+          if (-not $found) {
+            Write-Host "::warning::gwt $version 已送出，但 20 分鐘內還沒在 Gallery 上看到（可能還在驗證）。到 https://www.powershellgallery.com/packages/gwt 確認。"
+            return
+          }
+
+          $save = Join-Path $env:RUNNER_TEMP 'smoke'
+          Save-PSResource -Name gwt -Version $version -Repository PSGallery -Path $save -TrustRepository
+          $env:PSModulePath = $save + [System.IO.Path]::PathSeparator + $env:PSModulePath
+          $reported = (& pwsh -NoProfile -Command 'gwt --version') -join ''
+          if ($reported -ne "gwt $version") { throw "從 Gallery 裝下來的 gwt 回報的版本不對：$reported（預期 gwt $version）" }
+          Write-Host "gwt $version 已上架，裝下來可以用：$reported"

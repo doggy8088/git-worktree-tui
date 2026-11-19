@@ -4,8 +4,20 @@
 
 ## [未發布]
 
+## [0.2.0] - 2026-11-19
+
+第一個包含 PowerShell 7 版的 release；版本號三個地方（`gwt.zsh`、`gwt.psm1`、新的 `gwt.psd1`）同步改為 0.2.0。
+
 ### 新增
 
+- **發佈到 PowerShell Gallery 的流程**：新增模組清單 `gwt.psd1`、打包腳本 `tools/Build-PSGalleryPackage.ps1`
+  （發佈之前就把「發佈之後改不了」的事檢查完：三處版本一致、版本等於 tag、清單欄位、套件內容）、
+  以及發佈用的 GitHub Actions workflow（`.github/workflows/publish-psgallery.yml`）。發佈 GitHub release
+  就會測試、打包、等維護者核准、發佈、再從 Gallery 裝一份確認。PowerShell Gallery 目前不支援 Trusted
+  publishing（OIDC，[#353](https://github.com/PowerShell/PowerShellGallery/issues/353)），所以用 API key，
+  並且把風險降到最小：key 放在需要核准、只放行 `v*` tag 的 GitHub 環境裡，測試與打包看不到它，
+  action 釘在 commit SHA，沒有 token 權限，外部輸入不展開進腳本。維護與一次性設定見
+  [docs/publishing.md](docs/publishing.md)。
 - **PowerShell 7（`pwsh`）版**：`gwt.psm1`，只匯出 `gwt` 一個命令。行為、按鍵、設定項與 zsh 版對齊：
   方向鍵／`j`／`k`／數字鍵／`/` 模糊搜尋、`Esc` 與 `Ctrl+C`、`--list`／`--help`／`--version`、視窗化、
   欄寬截斷、`GWT_LANG` 等環境變數。取消與錯誤的結束狀態同時放在 `$LASTEXITCODE`（0／1／2／130）與 `$?`
@@ -18,7 +30,8 @@
   `-Uninstall`，以及給 `iex` 用的 `GWT_VERSION`／`GWT_INSTALL_DIR`／`GWT_PROFILE`。沒指定版本而最新的
   release 還沒有 PowerShell 版時，會明說並改裝 `main`。不會改執行原則，只會在 profile 載不進來時警告。
 - README 與官方網站加上 PowerShell 的安裝指令（各有自己的複製按鈕）、環境變數與結束狀態的 PowerShell 寫法。
-- 測試：新增 `tests/pwsh/`（26 個測試檔：18 個單元——含 `install.ps1` 對 16 種 profile 內容的安裝／移除逐位元組還原、
+- 測試：新增 `tests/pwsh/`（27 個測試檔：19 個單元——含 PowerShell Gallery 打包與發佈 workflow 的安全性質檢查、
+  `install.ps1` 對 16 種 profile 內容的安裝／移除逐位元組還原、
   以本機伺服器走完整的 `irm | iex` 流程、擋掉「PowerShell 7.0 上會壞的 API」的相容性防線、畫面重播器本身的語意測試；
   5 個以測試掛鉤餵按鍵並重播畫面、3 個在 ConPTY 真主控台裡送真按鍵），只需要 `pwsh` 7 與 git，不需要 bash、python 或 Pester。`make test-pwsh` 或
   `pwsh tests/pwsh/run.ps1`。CI 新增 `windows-latest` 工作。
@@ -98,4 +111,5 @@
 - 篩選是子字串比對，沒有模糊搜尋。
 - 不會自動 `git worktree prune`。
 
+[0.2.0]: https://github.com/doggy8088/git-worktree-tui/releases/tag/v0.2.0
 [0.1.0]: https://github.com/doggy8088/git-worktree-tui/releases/tag/v0.1.0

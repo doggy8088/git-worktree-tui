@@ -112,7 +112,11 @@ gwt() {
 
 - **Windows PowerShell 5.1**：內建的藍色那個。主控台預設不吃 VT 序列、預設編碼是 ANSI、沒有三元運算子與 `&&`，
   不是改幾行的事；目前明確不支援（安裝腳本在 5.1 裡會請使用者改用 `pwsh`）。
-- **發佈到 PowerShell Gallery**：`Install-Module gwt`。需要補 `gwt.psd1` 清單檔與版本同步。
+- **發佈到 PowerShell Gallery**：流程已建好（`gwt.psd1`、`tools/Build-PSGalleryPackage.ps1`、
+  `.github/workflows/publish-psgallery.yml`，見 [publishing.md](publishing.md)），第一次發佈需要維護者先在
+  Gallery 建立 API key、在 GitHub 建立 `psgallery` 環境。PowerShell Gallery **不支援 Trusted publishing（OIDC）**，
+  所以用 API key；追蹤 [PowerShell/PowerShellGallery#353](https://github.com/PowerShell/PowerShellGallery/issues/353)，
+  支援之後換掉 workflow 裡取得憑證的那一步，並刪掉 key 與 GitHub 的祕密。
 - **macOS／Linux 的 `pwsh`**：程式本身沒有 Windows 專屬 API，理論上能跑，但沒驗證也沒有 CI。
   要支援的話先把 `tests/pwsh/run.ps1` 掛上 ubuntu／macos 的 CI 看哪些測試會紅。
 - **`cmd.exe`、fish**：沒有計畫。Git Bash 底下的 zsh／bash 見第 11 項。
