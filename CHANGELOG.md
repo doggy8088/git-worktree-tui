@@ -4,6 +4,16 @@
 
 ## [未發布]
 
+### 變更
+
+- 新增 `.gitattributes`：所有文字檔在每個平台都以 LF 取出。v0.2.0 在 Windows runner 上打包，
+  PowerShell Gallery 上的三個檔案因此是 CRLF（內容與 tag 相同，位元組不同）；之後發佈的位元組會與 tag 相同。
+
+### 修正
+
+- 發佈流程的「確認已上架」步驟：`Save-PSResource` 之前先建立目錄。v0.2.0 發佈時這一步失敗，
+  workflow 因此顯示失敗，但發佈本身成功（`gwt 0.2.0` 已在 Gallery 上，另外手動驗證過下載與執行）。
+
 ## [0.2.0] - 2026-11-19
 
 第一個包含 PowerShell 7 版的 release；版本號三個地方（`gwt.zsh`、`gwt.psm1`、新的 `gwt.psd1`）同步改為 0.2.0。

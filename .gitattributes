@@ -1,0 +1,11 @@
+# 所有文字檔在每個平台都以 LF 取出，不管使用者或 CI 的 core.autocrlf 怎麼設。
+#
+# 為什麼：Windows 上的 Git（包含 GitHub Actions 的 windows-latest）預設會把 LF 轉成 CRLF。
+# v0.2.0 在 windows-latest 上打包，發佈到 PowerShell Gallery 的三個檔案因此是 CRLF，
+# 內容與 tag 相同，位元組卻不同。zsh 腳本取出成 CRLF 也會直接壞掉（每行結尾多一個 \r）。
+* text=auto eol=lf
+
+# 二進位檔明確標示，不做任何換行轉換
+*.png binary
+*.jpg binary
+*.ico binary
